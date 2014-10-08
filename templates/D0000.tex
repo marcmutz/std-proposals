@@ -1,0 +1,67 @@
+\documentclass[11pt]{article}
+
+\usepackage{xcolor}
+\usepackage{fullpage}
+\usepackage[colorlinks, allcolors=blue]{hyperref}
+\usepackage{listings}
+\usepackage{parskip}
+
+\lstdefinelanguage{diff}{
+  morecomment=[f][\color{blue}]{@@},           % group identifier
+  morecomment=[f][\color{red}]{-},             % deleted lines
+  morecomment=[f][\color{green!50!black}]{+},  % added lines
+  morecomment=[f][\color{magenta}]{---},       % diff header lines
+  morecomment=[f][\color{magenta}]{+++},
+}
+
+\lstset{
+  basicstyle=\footnotesize\ttfamily,
+}
+
+\newcommand{\emailaddress}{marc.mutz@kdab.com}
+\newcommand{\email}{\href{mailto:\emailaddress}{\emailaddress}}
+
+\date{}
+\title{---TITLE---}
+
+\begin{document}
+
+\maketitle\vspace{-2cm}
+
+\begin{flushright}
+  \begin{tabular}{ll}
+  Document \#:&N3887\\
+  Date:       &\date{2014-01-01}\\
+  Project:    &Programming Language C++\\
+              &Library Evolution Group\\
+%              &Library Group\\
+  Reply-to:   &\author{Marc Mutz}\\
+              &\textless\email\textgreater
+  \end{tabular}
+\end{flushright}
+
+\section{Introduction}
+
+\section{Motivation and Scope}
+
+\section{Impact on the Standard}
+
+\section{Proposed Wording}
+
+\section{Design Decisions}
+
+\section{Acknowledgements}
+
+\section{References}
+\renewcommand{\section}[2]{}%
+\begin{thebibliography}{9}
+
+  \bibitem[N3797]{N3797}
+    Stefanus Du Toit,
+    \emph{Working Draft, Standard for Programming Language C++}\newline
+    \url{http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2013/n3797.pdf}
+
+\end{thebibliography}
+
+\end{document}
+
