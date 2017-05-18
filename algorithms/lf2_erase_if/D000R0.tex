@@ -1,0 +1,214 @@
+\documentclass[11pt]{article}
+
+\usepackage{xcolor}
+\usepackage{fullpage}
+\usepackage[colorlinks, allcolors=blue]{hyperref}
+\usepackage{listings}
+\usepackage{parskip}
+
+\lstdefinelanguage{diff}{
+  morecomment=[f][\color{blue}]{@@},           % group identifier
+  morecomment=[f][\color{red}]{-},             % deleted lines
+  morecomment=[f][\color{green!50!black}]{+},  % added lines
+  morecomment=[f][\color{magenta}]{---},       % diff header lines
+  morecomment=[f][\color{magenta}]{+++},
+}
+
+\lstset{
+  basicstyle=\footnotesize\ttfamily,
+}
+
+\newcommand{\emailaddress}{marc.mutz@kdab.com}
+\newcommand{\email}{\href{mailto:\emailaddress}{\emailaddress}}
+
+\date{}
+\title{Improving the Return Value of Erase-Like Algorithms}
+
+\begin{document}
+
+\maketitle\vspace{-2cm}
+
+\begin{flushright}
+  \begin{tabular}{ll}
+  Document \#:&D0xxxR0\\
+  Date:       &\date{2017-05-18}\\
+  Project:    &Programming Language C++\\
+              &Library Evolution Working Group\\
+%              &Library Group\\
+  Reply-to:   &\author{Marc Mutz} \textless\email\textgreater
+  \end{tabular}
+\end{flushright}
+
+\section{Introduction}
+
+We propose to change the return type of \cite{LFv2TS} \texttt{erase()}
+and \texttt{erase\_if()} algorithms, as well as
+\texttt{forward\_list::remove()} and \texttt{remove\_if()} from
+\texttt{void} to \texttt{size\_t}, returning the number of elements
+removed.
+
+\section{Motivation and Scope}
+
+Alexander Stepanov, in his A9 courses\cite{A9}, teaches us not to
+throw away useful information, but instead return it from the
+algorithm.
+
+With that in mind, look at the following example:
+\begin{lstlisting}[language=C++]
+std::forward_list<std::shared_ptr<T>> fl = ...;
+erase(fl, nullptr);
+\end{lstlisting}
+Did \texttt{erase()} erase anything? We don't know. The only way we
+\emph{can} learn whether the algorithm removed something is to check
+the size of the list before and after the algorithm run. For most
+containers, that is a valid option, and fast. All \texttt{size()}
+methods of STL containers are $O(1)$ these days.
+
+But \texttt{std::forward\_list} has no \texttt{size()}\ldots
+
+We therefore propose to make the algorithms return the number of
+removed elements. While it is only really necessary for
+\texttt{forward\_list}, we believe that consistency here is more
+important than minimalism.
+
+Returning the number of elements also enables convenient one-line
+checks:
+\begin{lstlisting}[language=C++]
+if (erase(lf, nullptr)) {
+    // erased some
+}
+\end{lstlisting}
+
+\section{Impact on the Standard}
+
+Minimal. We propose to change the return value of library functions
+from \texttt{void} to \texttt{size\_t}. Existing users expecting no
+return value can continue to ignore it.
+
+\section{Proposed Wording}
+
+\subsection{Changes to \cite{cpp17}}
+
+In section \textbf{[forwardlist.overview]}:
+
+\begin{itemize}
+\item in paragraph 3, change the \texttt{remove()},
+  \texttt{remove\_if()} and \texttt{unique()} return types from
+  \texttt{void} to \texttt{size\_t} (four instances).
+\end{itemize}
+
+In section \textbf{[forwardlist.ops]}:
+
+\begin{itemize}
+\item after paragraphs 11 and 15, change the \texttt{remove()},
+  \texttt{remove\_if()} and \texttt{unique()} return types from
+  \texttt{void} to \texttt{size\_t} (four instances).
+\item after paragraphs 12 and 16, add new paragraph each:
+  \begin{quotation}
+    \textit{Returns:} The number of elements erased.
+  \end{quotation}
+\end{itemize}
+
+In section \textbf{[list.overview]}:
+
+\begin{itemize}
+\item in paragraph 2, change the \texttt{remove()},
+  \texttt{remove\_if()} and \texttt{unique()} return types from
+  \texttt{void} to \texttt{size\_t} (four instances).
+\end{itemize}
+
+In section \textbf{[list.ops]}:
+
+\begin{itemize}
+\item after paragraphs 14 and 18, change the \texttt{remove()},
+  \texttt{remove\_if()} and \texttt{unique()} return types from
+  \texttt{void} to \texttt{size\_t} (four instances).
+\item after paragraphs 15 and 19, add new paragraph each:
+  \begin{quotation}
+    \textit{Returns:} The number of elements erased.
+  \end{quotation}
+\end{itemize}
+
+\subsection{Changes to \cite{LFv2TS}}
+
+In section \textbf{[container.erasure.erase\_if]}:
+
+\begin{itemize}
+\item replace all \texttt{void} return types with \texttt{size\_t}
+\item change paragraph 2 to
+  \begin{quotation}
+    \textit{Effects:} Equivalent to:
+    \begin{lstlisting}[language=C++]
+      auto it = remove(c.begin(), c.end(), value);
+      auto res = size_t(distance(it, c.end()));
+      c.erase(it, c.end());
+      return res;
+    \end{lstlisting}
+  \end{quotation}
+\item add new paragraph after each of paragraphs 2, 4, and 6:
+  \begin{quotation}
+    \textit{Returns:} The number of elements erased.
+  \end{quotation}
+\item in paragraph 4, insert \texttt{return} between ``Equivalent
+  to:'' and ``\texttt{c.remove\_if(}\ldots''.
+\item change paragraph 4 to
+  \begin{quotation}
+    \textit{Effects:} Equivalent to:
+    \begin{lstlisting}[language=diff]
++ size_t res = 0;
+  for (auto i = c.begin(), last = c.end(); i != last; ) {
+    if (pred(*i)) {
+      i = c.erase(i);
++     ++res;
+    } else {
+      ++i;
+    }
+  }
++ return res;
+    \end{lstlisting}
+  \end{quotation}
+\end{itemize}
+
+In section \textbf{[container.erasure.erase]}:
+
+\begin{itemize}
+\item replace all \texttt{void} return types with \texttt{size\_t}
+\item change paragraph 2 to
+  \begin{quotation}
+    \textit{Effects:} Equivalent to:
+    \begin{lstlisting}[language=C++]
+      auto it = remove(c.begin(), c.end(), value);
+      auto res = size_t(distance(it, c.end()));
+      c.erase(it, c.end());
+      return res;
+    \end{lstlisting}
+  \end{quotation}
+\item add new paragraph after each of paragraphs 2 and 4:
+  \begin{quotation}
+    \textit{Returns:} The number of elements erased.
+  \end{quotation}
+\item in paragraph 4, insert \texttt{return} between ``Equivalent to:'' and ``\texttt{erase\_if(}\ldots''.
+\end{itemize}
+
+\section{References}
+\renewcommand{\section}[2]{}%
+\begin{thebibliography}{9}
+
+  \bibitem[A9]{A9}
+    Alexander Stepanov \emph{et al.}:
+    \emph{Four Algorithmic Journeys / Efficient Programming With Components / Programming Conversations}\newline
+    \url{https://www.youtube.com/user/A9Videos/playlists?view=1}
+
+  \bibitem[N4600]{LFv2TS} Geoffrey Romer (editor): \emph{Working
+      Draft, C++ Extensions for Library Fundamentals, Version
+      2}\newline
+    \url{http://open-std.org/JTC1/SC22/WG21/docs/papers/2016/n4600.html}
+
+  \bibitem[N4659]{cpp17} Richard Smith (editor). \emph{Working Draft,
+      Standard for Programming Language C++}\newline
+    \url{http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/n4659.pdf}
+
+\end{thebibliography}
+
+\end{document}
+
