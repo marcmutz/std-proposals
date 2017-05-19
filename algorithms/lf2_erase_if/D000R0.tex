@@ -31,7 +31,7 @@
 \begin{flushright}
   \begin{tabular}{ll}
   Document \#:&D0xxxR0\\
-  Date:       &\date{2017-05-18}\\
+  Date:       &\date{2017-05-19}\\
   Project:    &Programming Language C++\\
               &Library Evolution Working Group\\
 %              &Library Group\\
@@ -42,12 +42,20 @@
 \section{Introduction}
 
 We propose to change the return type of \cite{LFv2TS} \texttt{erase()}
-and \texttt{erase\_if()} algorithms, as well as
-\texttt{forward\_list::remove()} and \texttt{remove\_if()} from
-\texttt{void} to \texttt{size\_t}, returning the number of elements
-removed.
+and \texttt{erase\_if()} algorithms, as well as the \texttt{remove()},
+\texttt{remove\_if()} and \texttt{unique()} members of
+\texttt{forward\_list} and \texttt{list} from \texttt{void} to
+\texttt{size\_t}, returning the number of elements removed.
+
+This restores consistency with long-established API, such as
+\texttt{map/set::erase(key\_type)}.
+
+We show that C++17 compilers do not pessimise existing users that
+ignore the return value.
 
 \section{Motivation and Scope}
+
+\subsection{[[nodiscard]] Useful Information}
 
 Alexander Stepanov, in his A9 courses\cite{A9}, teaches us not to
 throw away useful information, but instead return it from the
@@ -78,6 +86,13 @@ if (erase(lf, nullptr)) {
     // erased some
 }
 \end{lstlisting}
+
+\subsection{Consistency}
+
+We note that the associative containers have returned the number of
+erased elements from their \texttt{erase(key\_type)} member functions
+since at least \cite{STL}. This proposal therefore also restores
+lost consistency with existing practice.
 
 \section{Impact on the Standard}
 
@@ -190,24 +205,75 @@ In section \textbf{[container.erasure.erase]}:
 \item in paragraph 4, insert \texttt{return} between ``Equivalent to:'' and ``\texttt{erase\_if(}\ldots''.
 \end{itemize}
 
+\section{Design Decisions}
+
+\subsection{Open Questions}
+
+Should we return \texttt{Container::size\_type} or
+\texttt{std::size\_t} from these functions? We have chosen
+\texttt{size\_t} for now, because of brevity, but are fine with
+\texttt{size\_type}, too, should the committee favour that.
+
+\subsection{Performance Considerations}
+
+Early reviewers of this proposal expressed concerns that the
+calculation of the return value might pessimise the algorithm over the
+version that returns \texttt{void}. Tests run on \url{godbolt.org}
+show, however, that the assembler instructions generated for the
+functions \texttt{counting()} and \texttt{noncounting()} in the
+following test were identical for GCC:
+
+\lstinputlisting[language=C++]{code/comparison.cpp}
+
+Clang sometimes formats the code a little differently (same
+instructions, grouped differently), without a clear indication which
+of the two is better. In Table~\ref{tab:asm}, this is called
+\emph{equivalent}.
+
+\begin{table}
+  \centering
+  \begin{tabular}[t]{|l||c|c|c|}
+    \hline
+    Container      & GCC 7.1   & Clang 4.0  & MSVC 2017 \\ \hline\hline
+    vector         & identical & identical  & --- \\
+    deque          & identical & identical  & --- \\
+    list           & identical & equivalent & --- \\
+    set            & identical & equivalent & --- \\
+    unordered\_set & identical & identical  & --- \\
+    map            & identical & equivalent & --- \\
+    unordered\_map & identical & identical  & --- \\ \hline
+  \end{tabular}
+  \caption{Assembler Comparison @ \texttt{-O2} (MSVC does not support constexpr-if)}
+  \label{tab:asm}
+\end{table}
+
+We think it is safe to say that the introduction of the return type
+does not pessimise callers that don't need it.
+
 \section{References}
 \renewcommand{\section}[2]{}%
 \begin{thebibliography}{9}
+\bibitem[A9]{A9}
+  Alexander Stepanov \emph{et al.}\newline
+  \emph{Four Algorithmic Journeys / Efficient Programming With Components /
+    Programming Conversations}\newline
+  \url{https://www.youtube.com/user/A9Videos/playlists?view=1}
 
-  \bibitem[A9]{A9}
-    Alexander Stepanov \emph{et al.}:
-    \emph{Four Algorithmic Journeys / Efficient Programming With Components / Programming Conversations}\newline
-    \url{https://www.youtube.com/user/A9Videos/playlists?view=1}
+\bibitem[SGI STL]{STL}
+  Alexander Stepanov \emph{et al.}\newline
+  \emph{Associative Container}\newline
+  in: \emph{Standard Template Library Programmer's Guide}\newline
+  \url{https://www.sgi.com/tech/stl/AssociativeContainer.html}
 
-  \bibitem[N4600]{LFv2TS} Geoffrey Romer (editor): \emph{Working
-      Draft, C++ Extensions for Library Fundamentals, Version
-      2}\newline
-    \url{http://open-std.org/JTC1/SC22/WG21/docs/papers/2016/n4600.html}
+\bibitem[N4600]{LFv2TS}
+  Geoffrey Romer (editor)\newline
+  \emph{Working Draft, C++ Extensions for Library Fundamentals, Version 2}\newline
+  \url{http://open-std.org/JTC1/SC22/WG21/docs/papers/2016/n4600.html}
 
-  \bibitem[N4659]{cpp17} Richard Smith (editor). \emph{Working Draft,
-      Standard for Programming Language C++}\newline
-    \url{http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/n4659.pdf}
-
+\bibitem[N4659]{cpp17}
+  Richard Smith (editor)\newline
+  \emph{Working Draft, Standard for Programming Language C++}\newline
+  \url{http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/n4659.pdf}
 \end{thebibliography}
 
 \end{document}
