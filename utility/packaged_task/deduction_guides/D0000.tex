@@ -72,7 +72,7 @@ In \texttt{[futures.task.members]}, after the
 \texttt{packaged\_task(F\&\&)} constructor description, add:
 
 \begin{quote}
-\texttt{template<class F> packaged\_task(F\&\&) -> packaged\_task<see below>;}
+\texttt{template<class F> packaged\_task(F) -> packaged\_task<see below>;}
 
 \textit{Remarks:} This deduction guide participates in overload
 resolution only if \texttt{\&F​::​operator()} is well-formed when treated
