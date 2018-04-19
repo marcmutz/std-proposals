@@ -1,0 +1,101 @@
+\documentclass[11pt]{article}
+
+\usepackage{xcolor}
+\usepackage{fullpage}
+\usepackage[colorlinks, allcolors=blue]{hyperref}
+\usepackage{listings}
+\usepackage{parskip}
+
+\lstdefinelanguage{diff}{
+  morecomment=[f][\color{blue}]{@@},           % group identifier
+  morecomment=[f][\color{red}]{-},             % deleted lines
+  morecomment=[f][\color{green!50!black}]{+},  % added lines
+  morecomment=[f][\color{magenta}]{---},       % diff header lines
+  morecomment=[f][\color{magenta}]{+++},
+}
+
+\lstset{
+  basicstyle=\footnotesize\ttfamily,
+}
+
+\newcommand{\emailaddress}{marc.mutz@kdab.com}
+\newcommand{\email}{\href{mailto:\emailaddress}{\emailaddress}}
+
+\date{}
+\title{Deduction Guides for packaged\_task}
+
+\begin{document}
+
+\maketitle\vspace{-2cm}
+
+\begin{flushright}
+  \begin{tabular}{ll}
+  Document \#:&PxxxxR0\\
+  Date:       &\date{2018-04-19}\\
+  Project:    &Programming Language C++\\
+              &Library Evolution Group\\
+%              &Library Group\\
+  Reply-to:   &\author{Marc Mutz}\\
+              &\textless\email\textgreater
+  \end{tabular}
+\end{flushright}
+
+\section{Introduction}
+
+\texttt{std::function} has deduction guides, but
+\texttt{std::packaged\_task}, which is otherwise very similar to
+\texttt{std::function}, does not. We propose to add deduction guides
+for \texttt{packaged\_task} that are compatible with the ones for
+\texttt{function}.
+
+\section{Impact on the Standard}
+
+Minimal. We propose to add deduction guides to
+\texttt{packaged\_task}, which lacked them. This enables code that did
+not previously compile, but does not change the meaning of existing code.
+
+\section{Proposed Wording}
+
+In \texttt{[futures.task.members]}, before the non-member
+\texttt{swap} function declaration, add:
+
+\begin{quote}
+\begin{lstlisting}[language=C++]
+  template<class R, class... ArgTypes>
+    packaged_task(R(*)(ArgTypes...)) -> packaged_task<R(ArgTypes...)>;
+
+  template<class F> packaged_task(F) -> packaged_task<see below>;
+\end{lstlisting}
+\end{quote}
+
+In \texttt{[futures.task.members]}, after the
+\texttt{packaged\_task(F\&\&)} constructor description, add:
+
+\begin{quote}
+\texttt{template<class F> packaged\_task(F\&\&) -> packaged\_task<see below>;}
+
+\textit{Remarks:} This deduction guide participates in overload
+resolution only if \texttt{\&F​::​operator()} is well-formed when treated
+as an unevaluated operand.  In that case, if
+\texttt{decltype(\&F​::​operator())} is of the form
+\texttt{R(G​::​*)(A...) cv \&$_{opt}$ noexcept$_{opt}$} for a class type
+\texttt{G}, then the deduced type is \texttt{packaged\_task<R(A...)>}.
+\end{quote}
+
+%\section{Acknowledgements}
+
+
+
+%\section{References}
+%\renewcommand{\section}[2]{}%
+%\begin{thebibliography}{9}
+%
+%  \bibitem[N3797]{N3797}
+%    Stefanus Du Toit,
+%    \emph{Working Draft, Standard for Programming Language C++}\newline
+%    \url{http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2013/n3797.pdf}
+%
+%\end{thebibliography}
+
+\end{document}
+
