@@ -1,0 +1,276 @@
+\documentclass[11pt]{article}
+
+\usepackage{xcolor}
+\usepackage{fullpage}
+\usepackage[colorlinks, allcolors=blue]{hyperref}
+\usepackage{listings}
+\usepackage{parskip}
+
+\lstdefinelanguage{diff}{
+  morecomment=[f][\color{blue}]{@@},           % group identifier
+  morecomment=[f][\color{red}]{-},             % deleted lines
+  morecomment=[f][\color{green!50!black}]{+},  % added lines
+  morecomment=[f][\color{magenta}]{---},       % diff header lines
+  morecomment=[f][\color{magenta}]{+++},
+}
+
+\lstset{
+  basicstyle=\footnotesize\ttfamily,
+}
+
+\setcounter{section}{-1}
+
+\newcommand{\emailaddress}{marc.mutz@kdab.com}
+\newcommand{\email}{\href{mailto:\emailaddress}{\emailaddress}}
+\newcommand{\wgpaper}[1]{\href{https://wg21.link/#1}{#1}}
+
+\date{}
+\title{Improving the Return Value of Erase-Like Algorithms II:\\ Library
+  Fundamentals V3 \texttt{erase}/\texttt{erase\_if}}
+
+\begin{document}
+
+\maketitle\vspace{-2cm}
+
+\begin{flushright}
+  \begin{tabular}{ll}
+% Document \#:&P0646R0\\
+  Document \#:&D1115R0\\
+  Date:       &\date{2018-06-04}\\
+  Project:    &Programming Language C++\\
+              &Library Working Group\\
+%              &Library Group\\
+  Reply-to:   &\author{Marc Mutz} \textless\email\textgreater
+  \end{tabular}
+\end{flushright}
+
+\section{Change History}
+
+This is a spin-off and revision of \wgpaper{P0646R0} at the request of
+LWG in Rapperswil to work around the problem of LFv3 not having opened
+shop in Rapperswil, yet.
+
+\subsection{Changes from P0646R0}
+
+\begin{enumerate}
+\item Removed changes to the IS draft, as these continue as
+  \wgpaper{P0646R1}.
+\item Changed the return type from \texttt{size\_t} to
+  \texttt{container::size\_type}.
+\item Rebased on LFv3 draft \cite{LFv3}.
+\end{enumerate}
+
+\section{Introduction}
+
+We propose to change the return type of \cite{LFv3} \texttt{erase()}
+and \texttt{erase\_if()} algorithms from \texttt{void} to
+\texttt{container::size\_type}, returning the number of elements removed.
+
+This restores consistency with long-established API, such as
+\texttt{map/set::erase(key\_type)}.
+
+We show that C++17 compilers do not pessimise existing users that
+ignore the return value.
+
+\section{Motivation and Scope}
+
+\subsection{[[nodiscard]] Useful Information}
+
+Alexander Stepanov, in his A9 courses\cite{A9}, teaches us not to
+throw away useful information, but instead return it from the
+algorithm.
+
+With that in mind, look at the following example:
+\begin{lstlisting}[language=C++]
+std::forward_list<std::shared_ptr<T>> fl = ...;
+erase(fl, nullptr);
+\end{lstlisting}
+Did \texttt{erase()} erase anything? We don't know. The only way we
+\emph{can} learn whether the algorithm removed something is to check
+the size of the list before and after the algorithm run. For most
+containers, that is a valid option, and fast. All \texttt{size()}
+methods of STL containers are $O(1)$ these days.
+
+But \texttt{std::forward\_list} has no \texttt{size()}\ldots
+
+We therefore propose to make the algorithms return the number of
+removed elements. While it is only really necessary for
+\texttt{forward\_list}, we believe that consistency here is more
+important than minimalism.
+
+Returning the number of elements also enables convenient one-line
+checks:
+\begin{lstlisting}[language=C++]
+if (erase(fl, nullptr)) {
+    // erased some
+}
+\end{lstlisting}
+
+\subsection{Consistency}
+
+We note that the associative containers have returned the number of
+erased elements from their \texttt{erase(key\_type)} member functions
+since at least \cite{STL}. This proposal therefore also restores
+lost consistency with existing practice.
+
+\section{Impact on the Standard}
+
+Minimal. We propose to change the return value of library functions
+from \texttt{void} to \texttt{size\_type}. Existing users expecting no
+return value can continue to ignore it. There is no
+binary-compatibility issue here, since the algorithms in LFv2 are
+specified in inline namespace \texttt{fundamentals\_v2}, while the
+changed algorithms will be in \texttt{fundamentals\_v3}.
+
+\section{Proposed Wording}
+
+\subsection{Changes to \cite{LFv3}}
+
+In section \textbf{[container.erasure.syn]}:
+
+\begin{itemize}
+\item For each \texttt{erase(\textit{container}\& c, \ldots)} and
+  \texttt{erase\_if(\textit{container}\& c, \ldots)}, change the return
+  type from \texttt{void} to \texttt{typename \textit{container}::size\_type}
+\end{itemize}
+
+In section \textbf{[container.erasure.erase\_if]}:
+
+\begin{itemize}
+\item replace all \texttt{void} return types with \texttt{size\_type}
+\item change paragraph 2 to
+  \begin{quotation}
+    \textit{Effects:} Equivalent to:
+    \begin{lstlisting}[language=C++]
+      auto it = remove(c.begin(), c.end(), value);
+      auto res = size_t(distance(it, c.end()));
+      c.erase(it, c.end());
+      return res;
+    \end{lstlisting}
+  \end{quotation}
+\item add new paragraph after each of paragraphs 2, 4, and 6:
+  \begin{quotation}
+    \textit{Returns:} The number of elements erased.
+  \end{quotation}
+\item in paragraph 4, insert \texttt{return} between ``Equivalent
+  to:'' and ``\texttt{c.remove\_if(}\ldots''.
+\item change paragraph 4 to
+  \begin{quotation}
+    \textit{Effects:} Equivalent to:
+    \begin{lstlisting}[language=diff]
++ size_t res = 0;
+  for (auto i = c.begin(), last = c.end(); i != last; ) {
+    if (pred(*i)) {
+      i = c.erase(i);
++     ++res;
+    } else {
+      ++i;
+    }
+  }
++ return res;
+    \end{lstlisting}
+  \end{quotation}
+\end{itemize}
+
+In section \textbf{[container.erasure.erase]}:
+
+\begin{itemize}
+\item replace all \texttt{void} return types with \texttt{size\_t}
+\item change paragraph 2 to
+  \begin{quotation}
+    \textit{Effects:} Equivalent to:
+    \begin{lstlisting}[language=C++]
+      auto it = remove(c.begin(), c.end(), value);
+      auto res = size_t(distance(it, c.end()));
+      c.erase(it, c.end());
+      return res;
+    \end{lstlisting}
+  \end{quotation}
+\item add new paragraph after each of paragraphs 2 and 4:
+  \begin{quotation}
+    \textit{Returns:} The number of elements erased.
+  \end{quotation}
+\item in paragraph 4, insert \texttt{return} between ``Equivalent to:'' and ``\texttt{erase\_if(}\ldots''.
+\end{itemize}
+
+\section{Design Decisions}
+
+\subsection{Open Questions}
+
+Should we return \texttt{Container::size\_type} or
+\texttt{std::size\_t} from these functions? We have chosen
+\texttt{size\_t} for now, because of brevity, but are fine with
+\texttt{size\_type}, too, should the committee favour that.
+
+\subsection{Performance Considerations}
+
+Early reviewers of this proposal expressed concerns that the
+calculation of the return value might pessimise the algorithm over the
+version that returns \texttt{void}. Tests run on \url{godbolt.org}
+show, however, that the assembler instructions generated for the
+functions \texttt{counting()} and \texttt{noncounting()} in the
+following test were identical for GCC:
+
+\lstinputlisting[language=C++]{code/comparison.cpp}
+
+Clang sometimes formats the code a little differently (same
+instructions, grouped differently), without a clear indication which
+of the two is better. In Table~\ref{tab:asm}, this is called
+\emph{equivalent}.
+
+\begin{table}
+  \centering
+  \begin{tabular}[t]{|l||c|c|c|}
+    \hline
+    Container      & GCC 7.1   & Clang 4.0  & MSVC 2017 \\ \hline\hline
+    vector         & identical & identical  & --- \\
+    deque          & identical & identical  & --- \\
+    list           & identical & equivalent & --- \\
+    set            & identical & equivalent & --- \\
+    unordered\_set & identical & identical  & --- \\
+    map            & identical & equivalent & --- \\
+    unordered\_map & identical & identical  & --- \\ \hline
+  \end{tabular}
+  \caption{Assembler Comparison @ \texttt{-O2} (MSVC does not support constexpr-if)}
+  \label{tab:asm}
+\end{table}
+
+We think it is safe to say that the introduction of the return type
+does not pessimise callers that don't need it.
+
+\section{Acknowledgements}
+
+We thank the reviewers of draft versions of this proposal and the
+participants of the associated discussion on
+\url{std-proposals@isocpp.org} for their input: Sean Parent, Arthur
+O'Dwyer, Nicol Bolas, Ville Voutilainen, Casey Carter, Milian Wolff,
+Andr\'e Somers. All remaining errors are ours.
+
+\section{References}
+\renewcommand{\section}[2]{}%
+\begin{thebibliography}{9}
+\bibitem[A9]{A9}
+  Alexander Stepanov \emph{et al.}\newline
+  \emph{Four Algorithmic Journeys / Efficient Programming With Components /
+    Programming Conversations}\newline
+  \url{https://www.youtube.com/user/A9Videos/playlists?view=1}
+
+\bibitem[SGI STL]{STL}
+  Alexander Stepanov \emph{et al.}\newline
+  \emph{Associative Container}\newline
+  in: \emph{Standard Template Library Programmer's Guide}\newline
+  \url{https://www.sgi.com/tech/stl/AssociativeContainer.html}
+
+\bibitem[N4600]{LFv2TS}
+  Geoffrey Romer (editor)\newline
+  \emph{Working Draft, C++ Extensions for Library Fundamentals, Version 2}\newline
+  \url{http://open-std.org/JTC1/SC22/WG21/docs/papers/2016/n4600.html}
+
+\bibitem[N4659]{cpp17}
+  Richard Smith (editor)\newline
+  \emph{Working Draft, Standard for Programming Language C++}\newline
+  \url{http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/n4659.pdf}
+\end{thebibliography}
+
+\end{document}
+

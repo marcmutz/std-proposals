@@ -18,11 +18,13 @@
   basicstyle=\footnotesize\ttfamily,
 }
 
+\setcounter{section}{-1}
+
 \newcommand{\emailaddress}{marc.mutz@kdab.com}
 \newcommand{\email}{\href{mailto:\emailaddress}{\emailaddress}}
 
 \date{}
-\title{Improving the Return Value of Erase-Like Algorithms}
+\title{Improving the Return Value of Erase-Like Algorithms I: \texttt{list}/\texttt{forward\_list}}
 
 \begin{document}
 
@@ -31,22 +33,34 @@
 \begin{flushright}
   \begin{tabular}{ll}
 % Document \#:&P0646R0\\
-  Document \#:&P0646R0\\
-  Date:       &\date{2017-05-19}\\
+  Document \#:&D0646R1\\
+  Date:       &\date{2018-06-04}\\
   Project:    &Programming Language C++\\
-              &Library Evolution Working Group\\
+              &Library Working Group\\
 %              &Library Group\\
   Reply-to:   &\author{Marc Mutz} \textless\email\textgreater
   \end{tabular}
 \end{flushright}
 
+\section{Change History}
+
+\subsection{Changes from P0646R0}
+
+\begin{enumerate}
+\item Removed changes to Library Fundamentals V2, as that is already
+  released. Split the Library Fundamentals bits into a new paper to be
+  released when LFv3 opens shop.
+\item Changed the return type from \texttt{size\_t} to
+  \texttt{container::size\_type} (as per LEWG request in Toronto).
+\item Rebased on latest C++2a draft \cite{cpp}.
+\end{enumerate}
+
 \section{Introduction}
 
-We propose to change the return type of \cite{LFv2TS} \texttt{erase()}
-and \texttt{erase\_if()} algorithms, as well as the \texttt{remove()},
+We propose to change the return type of the \texttt{remove()},
 \texttt{remove\_if()} and \texttt{unique()} members of
 \texttt{forward\_list} and \texttt{list} from \texttt{void} to
-\texttt{size\_t}, returning the number of elements removed.
+\texttt{container::size\_type}, returning the number of elements removed.
 
 This restores consistency with long-established API, such as
 \texttt{map/set::erase(key\_type)}.
@@ -65,9 +79,9 @@ algorithm.
 With that in mind, look at the following example:
 \begin{lstlisting}[language=C++]
 std::forward_list<std::shared_ptr<T>> fl = ...;
-erase(fl, nullptr);
+fl.remove(nullptr);
 \end{lstlisting}
-Did \texttt{erase()} erase anything? We don't know. The only way we
+Did \texttt{remove()} remove anything? We don't know. The only way we
 \emph{can} learn whether the algorithm removed something is to check
 the size of the list before and after the algorithm run. For most
 containers, that is a valid option, and fast. All \texttt{size()}
@@ -83,8 +97,8 @@ important than minimalism.
 Returning the number of elements also enables convenient one-line
 checks:
 \begin{lstlisting}[language=C++]
-if (erase(lf, nullptr)) {
-    // erased some
+if (fl.remove(nullptr)) {
+    // removed some
 }
 \end{lstlisting}
 
@@ -98,28 +112,29 @@ lost consistency with existing practice.
 \section{Impact on the Standard}
 
 Minimal. We propose to change the return value of library functions
-from \texttt{void} to \texttt{size\_t}. Existing users expecting no
-return value can continue to ignore it.
+from \texttt{void} to \texttt{container::size\_type}. Existing users
+expecting no return value can continue to ignore it. In particular,
+this is one of the changes explicitly mentioned in \cite{P0921R2}.
 
 \section{Proposed Wording}
 
-\subsection{Changes to \cite{cpp17}}
+\subsection{Changes to \cite{cpp}}
 
 In section \textbf{[forwardlist.overview]}:
 
 \begin{itemize}
 \item in paragraph 3, change the \texttt{remove()},
   \texttt{remove\_if()} and \texttt{unique()} return types from
-  \texttt{void} to \texttt{size\_t} (four instances).
+  \texttt{void} to \texttt{size\_type} (four instances).
 \end{itemize}
 
 In section \textbf{[forwardlist.ops]}:
 
 \begin{itemize}
-\item after paragraphs 11 and 15, change the \texttt{remove()},
+\item after paragraphs 12 and 16, change the \texttt{remove()},
   \texttt{remove\_if()} and \texttt{unique()} return types from
-  \texttt{void} to \texttt{size\_t} (four instances).
-\item after paragraphs 12 and 16, add new paragraph each:
+  \texttt{void} to \texttt{size\_type} (four instances).
+\item after paragraphs 13 and 17, add new paragraph each:
   \begin{quotation}
     \textit{Returns:} The number of elements erased.
   \end{quotation}
@@ -130,7 +145,7 @@ In section \textbf{[list.overview]}:
 \begin{itemize}
 \item in paragraph 2, change the \texttt{remove()},
   \texttt{remove\_if()} and \texttt{unique()} return types from
-  \texttt{void} to \texttt{size\_t} (four instances).
+  \texttt{void} to \texttt{size\_type} (four instances).
 \end{itemize}
 
 In section \textbf{[list.ops]}:
@@ -138,84 +153,14 @@ In section \textbf{[list.ops]}:
 \begin{itemize}
 \item after paragraphs 14 and 18, change the \texttt{remove()},
   \texttt{remove\_if()} and \texttt{unique()} return types from
-  \texttt{void} to \texttt{size\_t} (four instances).
+  \texttt{void} to \texttt{size\_type} (four instances).
 \item after paragraphs 15 and 19, add new paragraph each:
   \begin{quotation}
     \textit{Returns:} The number of elements erased.
   \end{quotation}
 \end{itemize}
 
-\subsection{Changes to \cite{LFv2TS}}
-
-In section \textbf{[container.erasure.erase\_if]}:
-
-\begin{itemize}
-\item replace all \texttt{void} return types with \texttt{size\_t}
-\item change paragraph 2 to
-  \begin{quotation}
-    \textit{Effects:} Equivalent to:
-    \begin{lstlisting}[language=C++]
-      auto it = remove(c.begin(), c.end(), value);
-      auto res = size_t(distance(it, c.end()));
-      c.erase(it, c.end());
-      return res;
-    \end{lstlisting}
-  \end{quotation}
-\item add new paragraph after each of paragraphs 2, 4, and 6:
-  \begin{quotation}
-    \textit{Returns:} The number of elements erased.
-  \end{quotation}
-\item in paragraph 4, insert \texttt{return} between ``Equivalent
-  to:'' and ``\texttt{c.remove\_if(}\ldots''.
-\item change paragraph 4 to
-  \begin{quotation}
-    \textit{Effects:} Equivalent to:
-    \begin{lstlisting}[language=diff]
-+ size_t res = 0;
-  for (auto i = c.begin(), last = c.end(); i != last; ) {
-    if (pred(*i)) {
-      i = c.erase(i);
-+     ++res;
-    } else {
-      ++i;
-    }
-  }
-+ return res;
-    \end{lstlisting}
-  \end{quotation}
-\end{itemize}
-
-In section \textbf{[container.erasure.erase]}:
-
-\begin{itemize}
-\item replace all \texttt{void} return types with \texttt{size\_t}
-\item change paragraph 2 to
-  \begin{quotation}
-    \textit{Effects:} Equivalent to:
-    \begin{lstlisting}[language=C++]
-      auto it = remove(c.begin(), c.end(), value);
-      auto res = size_t(distance(it, c.end()));
-      c.erase(it, c.end());
-      return res;
-    \end{lstlisting}
-  \end{quotation}
-\item add new paragraph after each of paragraphs 2 and 4:
-  \begin{quotation}
-    \textit{Returns:} The number of elements erased.
-  \end{quotation}
-\item in paragraph 4, insert \texttt{return} between ``Equivalent to:'' and ``\texttt{erase\_if(}\ldots''.
-\end{itemize}
-
-\section{Design Decisions}
-
-\subsection{Open Questions}
-
-Should we return \texttt{Container::size\_type} or
-\texttt{std::size\_t} from these functions? We have chosen
-\texttt{size\_t} for now, because of brevity, but are fine with
-\texttt{size\_type}, too, should the committee favour that.
-
-\subsection{Performance Considerations}
+\section{Performance Considerations}
 
 Early reviewers of this proposal expressed concerns that the
 calculation of the return value might pessimise the algorithm over the
@@ -254,10 +199,13 @@ does not pessimise callers that don't need it.
 \section{Acknowledgements}
 
 We thank the reviewers of draft versions of this proposal and the
-participants of the associated discussion on
-\url{std-proposals@isocpp.org} for their input: Sean Parent, Arthur
-O'Dwyer, Nicol Bolas, Ville Voutilainen, Casey Carter, Milian Wolff,
-Andr\'e Somers. All remaining errors are ours.
+participants of the associated discussions on
+\url{std-proposals@isocpp.org} and LWG in Rapperswil for their input: Sean
+Parent, Arthur O'Dwyer, Nicol Bolas, Ville Voutilainen, Casey Carter,
+Milian Wolff, Andr\'e Somers. All remaining errors are ours.
+
+The authors would like to thank Titus Winters for championing revision
+0 of this paper in Toronto.
 
 \section{References}
 \renewcommand{\section}[2]{}%
@@ -274,15 +222,14 @@ Andr\'e Somers. All remaining errors are ours.
   in: \emph{Standard Template Library Programmer's Guide}\newline
   \url{https://www.sgi.com/tech/stl/AssociativeContainer.html}
 
-\bibitem[N4600]{LFv2TS}
-  Geoffrey Romer (editor)\newline
-  \emph{Working Draft, C++ Extensions for Library Fundamentals, Version 2}\newline
-  \url{http://open-std.org/JTC1/SC22/WG21/docs/papers/2016/n4600.html}
-
-\bibitem[N4659]{cpp17}
+\bibitem[N4750]{cpp}
   Richard Smith (editor)\newline
   \emph{Working Draft, Standard for Programming Language C++}\newline
-  \url{http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/n4659.pdf}
+  \url{http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2018/n4750.pdf}
+
+\bibitem[P0921R2]{P0921R2} Titus Winters\newline
+  \emph{Standard Library Compatibility}\newline
+  \url{http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2018/p0921r2.pdf}
 \end{thebibliography}
 
 \end{document}
