@@ -30,37 +30,27 @@
 
 \begin{flushright}
   \begin{tabular}{ll}
-  Document \#:&P1038R0\\
-  Date:       &\date{2018-04-19}\\
-  Project:    &Programming Language C++\\
-              &Library Evolution Group\\
+  Document \#:&D1038R0\\
+  Date:       &\date{2018-06-07}\\
+  Project:    &Library Evolution Group\\
 %              &Library Group\\
-  Reply-to:   &\author{Marc Mutz}\\
-              &\textless\email\textgreater
+  Reply-to:   &\author{Marc Mutz} \textless\email\textgreater
   \end{tabular}
 \end{flushright}
 
-\section{Introduction}
-
+\begin{abstract}
 \texttt{std::function} has deduction guides, but
-\texttt{std::packaged\_task}, which is otherwise very similar to
-\texttt{std::function}, does not. We propose to add deduction guides
-for \texttt{packaged\_task} that are compatible with the ones for
-\texttt{function}.
+\texttt{std::packaged\_task}, which is otherwise very similar, does
+not.  This is surprising to users and we can think of no reason for
+the former to be treated differently from the latter.  We therefore
+propose to add deduction guides for \texttt{packaged\_task} with the
+same semantics as the existing ones for \texttt{function}.
+\end{abstract}
 
-\section{Impact on the Standard}
+\section{Proposed Wording\protect\footnote{NB: The intent is to re-use the wording that \texttt{std::function} has in the draft at the time of acceptance.}}
 
-Minimal. We propose to add deduction guides to
-\texttt{packaged\_task}, which lacked them. This enables code that did
-not previously compile, but does not change the meaning of existing code.
-
-\section{Proposed Wording}
-
-NB: The intent is to re-use the wording that \texttt{std::function} has in
-the draft at the time of acceptance.
-
-In \texttt{[futures.task]}, before the non-member
-\texttt{swap} function declaration, add:
+In \texttt{[futures.task]}, after the class definition and before the
+non-member \texttt{swap} function declaration, add:
 
 \begin{quote}
 \begin{lstlisting}[language=C++]
@@ -88,7 +78,7 @@ as an unevaluated operand.  In that case, if
 \section{Acknowledgements}
 
 Barry Revzin found a bug in a draft version of this paper. All other
-errors are mine.
+errors are ours.
 
 %\section{References}
 %\renewcommand{\section}[2]{}%
