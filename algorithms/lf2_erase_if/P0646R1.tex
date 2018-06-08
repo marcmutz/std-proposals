@@ -33,8 +33,8 @@
 \begin{flushright}
   \begin{tabular}{ll}
 % Document \#:&P0646R0\\
-  Document \#:&D0646R1\\
-  Date:       &\date{2018-06-04}\\
+  Document \#:&P0646R1\\
+  Date:       &\today\\
   Project:    &Programming Language C++\\
               &Library Working Group\\
 %              &Library Group\\
@@ -53,6 +53,8 @@
 \item Changed the return type from \texttt{size\_t} to
   \texttt{container::size\_type} (as per LEWG request in Toronto).
 \item Rebased on latest C++2a draft \cite{cpp}.
+\item Added feature test macro suggestions.
+\item Added wording for Appendix C.
 \end{enumerate}
 
 \section{Introduction}
@@ -160,6 +162,33 @@ In section \textbf{[list.ops]}:
   \end{quotation}
 \end{itemize}
 
+In \texttt{[diff.cpp17.containers]} (create if it doesn't exist), add:
+
+\begin{quote}
+\begin{description}
+\item[Affected subclauses:] \texttt{[forwardlist]},
+  \texttt{[list]}
+\item[Change:] Return types of
+  \texttt{remove()}/\texttt{remove\_if()}/\texttt{unique()} changed
+  from \texttt{void} to \texttt{container::size\_type}.
+\item[Rationale:] Improve efficiency and convenience of finding number
+  of removed elements.
+\item[Effect on original feature:] Code which depends on the return
+  types might have different semantics in this document. Translation
+  units compiled against this version of C++ may be incompatible with
+  translation units compiled against C++17, either failing to link or
+  having undefined behavior.
+\end{description}
+\end{quote}
+
+\subsection{Feature Testing}
+
+The \texttt{\_\_cpp\_lib\_list\_remove\_return\_type} macro, defined
+in both \texttt{<forward\_list>} and \texttt{<list>}, should be used.
+
+\textit{NB: If P0941R2 is accepted into the IS, this macro should be
+  added to the table in \texttt{[support.limits.general]}}.
+
 \section{Performance Considerations}
 
 Early reviewers of this proposal expressed concerns that the
@@ -198,14 +227,16 @@ does not pessimise callers that don't need it.
 
 \section{Acknowledgements}
 
+Jonathan Wakely kindly provided Appendix C wording.
+
+Titus Winters championed revision 0 of this paper in Toronto.
+
 We thank the reviewers of draft versions of this proposal and the
 participants of the associated discussions on
-\url{std-proposals@isocpp.org} and LWG in Rapperswil for their input: Sean
-Parent, Arthur O'Dwyer, Nicol Bolas, Ville Voutilainen, Casey Carter,
-Milian Wolff, Andr\'e Somers. All remaining errors are ours.
+\url{std-proposals@isocpp.org} and LWG in Rapperswil for their input:
+Sean Parent, Arthur O'Dwyer, Nicol Bolas, Ville Voutilainen, Casey
+Carter, Milian Wolff, Andr\'e Somers. All remaining errors are ours.
 
-The authors would like to thank Titus Winters for championing revision
-0 of this paper in Toronto.
 
 \section{References}
 \renewcommand{\section}[2]{}%
