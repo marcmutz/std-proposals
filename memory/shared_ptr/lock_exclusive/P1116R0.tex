@@ -1,0 +1,486 @@
+\documentclass[11pt]{article}
+
+\usepackage{xcolor}
+\usepackage{fullpage}
+\usepackage[colorlinks, allcolors=blue]{hyperref}
+\usepackage{listings}
+\usepackage{parskip}
+\usepackage{amssymb}
+
+\lstdefinelanguage{diff}{
+  morecomment=[f][\color{blue}]{@@},           % group identifier
+  morecomment=[f][\color{red}]{-},             % deleted lines
+  morecomment=[f][\color{green!50!black}]{+},  % added lines
+  morecomment=[f][\color{magenta}]{---},       % diff header lines
+  morecomment=[f][\color{magenta}]{+++},
+}
+
+\lstset{
+  basicstyle=\footnotesize\ttfamily,
+}
+
+\newcommand{\emailaddress}{marc.mutz@kdab.com}
+\newcommand{\email}{\href{mailto:\emailaddress}{\emailaddress}}
+
+\newcommand{\wgpaper}[1]{\href{https://wg21.link/#1}{#1}}
+\newcommand{\isref}[1]{\textbf{[\wgpaper{#1}]}}
+
+\newcommand{\lockx}{\texttt{lock\_exclusive()}}
+\newcommand{\uptr}{\texttt{unique\_ptr}}
+\newcommand{\wptr}{\texttt{weak\_ptr}}
+\newcommand{\sptr}{\texttt{shared\_ptr}}
+\newcommand{\sptrlockx}{\texttt{\sptr::\lockx}}
+\newcommand{\sptrcT}{\texttt{\sptr<const T>}}
+\newcommand{\makeshared}{\texttt{make\_shared}}
+
+\date{}
+\title{Re-Gaining Exclusive Ownership from \sptr{}s}
+
+\begin{document}
+
+\maketitle\vspace{-2cm}
+
+\begin{tabular}{ll}
+  Document \#:&P1116R0\\
+  Date:       &\today\\
+  Project:    &Programming Language C++\\
+              &SG1 (for implementability)\\
+              &Library Evolution Working Group (for API review)\\
+%              &Library Group\\
+  Reply-to:   &\author{Marc Mutz} \textless\email\textgreater
+\end{tabular}
+\vspace{1cm}
+\begin{abstract}
+  We propose to add a function, \lockx, to \sptr{} to re-gain
+  exclusive ownership of the payload. Exclusive ownership is defined
+  as a sole \sptr{} owning, combined with no \wptr{}s referencing, the
+  resource. The reason to exclude \wptr{}s is that the presence of a
+  \wptr{} (e.g.\ in a separate thread of execution) could materialize
+  new \sptr{}s at any time, which would invalidate the exclusive
+  ownership state.
+
+  The primary use-case is efficient copy-on-write implementations
+  using \sptrcT{} to hide the details of ref-counting, a la Sean
+  Parent's \texttt{document} example from \cite{Seasoning}. As long as
+  the objects involved are immutable, mutation is performed by copying
+  from the existing state and modifying the state before storing in
+  the new \sptrcT{}. The existing \texttt{unique()} function is not
+  sufficient for this purpose, because it does not take the existence
+  of associated \wptr{}s into account, which could materialize new
+  \sptr{}s at any time from a different thread.
+\end{abstract}
+
+
+\tableofcontents
+
+\section{Motivation and Scope}
+
+\subsection{Efficient Copy-on-Write}
+
+Sean Parent, in \cite{Seasoning}, introduced a pattern of using
+\sptrcT{} to share common data between different versions
+of a document, without the need to deep copy. In this way, he can
+implement undo as a simple \texttt{vector<document>} even with very
+large \texttt{document}s.
+
+\sptrcT{} works well for this as long as one works with immutable
+objects. But it is well-known that actions\footnote{modifying an
+  object's state in-place} can often be more efficient than
+transformations\footnote{copying an object's state, making changes,
+  and then creating a new object with the new state, leaving the old
+  object alone}, so immutability of objects may not always be desired.
+
+Let's look at a typical mutator of a class that uses \sptrcT{} to store
+data:
+
+\begin{lstlisting}[language=C++,caption={Typical mutator of a class that uses \sptrcT}]
+  shared_ptr<const Data> m_data;
+
+  void set_foo(T foo) {
+    auto uniq = clone_or_new(m_data);
+    uniq->foo = std::move(foo);
+    m_data = std::move(uniq);
+  }
+\end{lstlisting}
+
+where \texttt{clone\_or\_new} might be implemented like this:
+
+\begin{lstlisting}[language=C++,caption={Inefficient implementation of \texttt{clone\_or\_new()}}]
+  static auto clone_or_new(const shared_ptr<const Data> & sp) {
+    return sp ? make_shared<Data>(*sp) : make_shared<Data>();
+  }
+\end{lstlisting}
+
+This is the classical copy-on-write implementation, with a drawback:
+every setter allocates, even if it just sets an \texttt{int}
+field. This is clearly not acceptable in a production-quality
+implementation, in particular for APIs that employ something like Qt's
+\cite{qt} Property-Based Design \cite{property_based}, which calls for
+preferring setters over long lists of contructor arguments:
+
+\begin{lstlisting}[language=C++,caption={Comparison between Qt~3 and Qt~4 slider creation}]
+  // Qt 3:
+  QSlider qt3(0, 100, 50, 10); // allocs once, but unreadable
+  
+  // Qt 4+:
+  QSlider slider;          // allocates, because all properties
+                           // have defined defaults
+  slider.setRange(0, 100); // would allocate
+  slider.setPageStep(10);  // would allocate
+  slider.setValue(50);     // would allocate
+\end{lstlisting}
+
+The obvious optimisation is to not create a new copy of the data if
+we're the sole owner:
+
+\begin{lstlisting}[language=C++,label={lst:clone-or-new-using-unique},caption={\texttt{clone\_or\_new()} using \texttt{unique()}}]
+  static auto clone_or_new(shared_ptr<const Data> & sp) {
+    return sp.unique() ? const_ptr_cast<Data>(std::move(sp)) :
+           sp          ? make_shared<Data>(*sp) :
+           /* else */    make_shared<Data>() ;
+  }
+\end{lstlisting}
+
+But this fails in multithreaded contexts, as \texttt{\sptr::unique()}
+is only approximate. Besides, \texttt{\sptr::unique()} is deprecated
+as of C++17.
+
+The problem, of course, is that a new strong reference may be created
+as a copy of \texttt{sp} in between the calls to \texttt{unique()} and
+the move from \texttt{sp}, which will lead to a data race on
+\texttt{sp->foo} further down the road, as the return value of
+\texttt{clone\_or\_new()} is assumed, by \texttt{set\_foo()}, to
+represent an exclusive owner.
+
+We could try to define the problem away: assuming \texttt{sp.unique()}
+returns \texttt{true}, we're looking at the sole remaining strong
+reference. While the non-const function \texttt{set\_foo()} executes,
+we can assume that no new copies of \texttt{sp} are taken, because the
+only way to do so would be from another thread. We can declare such
+use to be outside the contract of the function, along the lines of
+``to call mutators, you need to externally synchronise'' as part of a
+``const access is thread-safe'' policy.
+
+And this view would be correct if it wasn't for \texttt{weak\_ptr},
+which can upgrade to a strong reference at any time.
+
+It follows that the condition for when we are able to re-use the
+existing \sptr{} in \texttt{clone\_or\_new} is \emph{not}
+\texttt{unique() == true}, but ``weak reference count is one'', iow: we
+control the only \sptr{} and there are no \texttt{weak\_ptr}s registered
+with it. But we have no API to check for this implementation detail of
+\sptr.
+
+Enter \sptrlockx.
+
+This function returns a new owning pointer that represents the sole
+owner of the data, setting \texttt{*this} to \texttt{nullptr} upon
+success. The effects are atomic.
+
+Our example function then becomes:
+
+\begin{lstlisting}[language=C++,caption={\texttt{clone\_or\_new()} using \lockx}]
+  static auto clone_or_new(shared_ptr<const Data> & sp) {
+    auto uniq = const_pointer_cast<Data>(sp.lock_exclusive());
+    if (!uniq)
+      uniq = sp ? make_shared<Data>(*sp) : make_shared<Data>();
+    return uniq;
+  }
+\end{lstlisting}
+
+\subsection{Implementability}
+
+All implementations the authors have have come across share the split
+into a weak reference count, ref-counting the control block, and a
+strong reference count, ref-counting the lifetime of the payload
+object.
+
+In all implementations, except \texttt{QSharedPointer}, the set of all
+\sptr{} instances are counted as one (1) in the weak reference count.
+
+The condition for when \lockx{} succeeds is thus \texttt{weak\_ref == 1
+  \&\& strong\_ref == 1}.
+
+\textit{Proof:} Since \texttt{strong\_ref == 1}, there is exactly one
+\sptr{} (\texttt{*this}). Since \texttt{weak\_ref == 1}, there is
+either one \wptr{} and no \sptr{} (contradicting the existence of
+\texttt{*this}), or there is at least one \sptr{} and no
+\wptr{}s. Taken together, it follows that there is exactly one \sptr{}
+(\texttt{*this}) and no \wptr{}s.\hfill$\blacksquare$
+
+A simple simultaneous relaxed atomic load of \texttt{weak\_ref} and
+\texttt{strong\_ref} suffices to check for exclusive ownership, since
+taking a new copy of \texttt{*this} while a non-const member function
+is executing is already undefined behaviour, so the implementation of
+\lockx{} can assume that when \texttt{weak\_ref} contains 1, it will
+stay that way for the remainder of the function.
+
+No stronger memory ordering than relaxed is needed, either, since we
+don't touch the referenced data, in fact we change nothing except
+swapping pointers from \texttt{*this} to the return value.
+
+The advantage of this implementation is that only \lockx{} needs to be
+added; all other operations, including \sptr/\wptr{} and \wptr/\sptr{}
+conversions, can remain unchanged.
+
+\emph{NB: We'd like to ask for guidance from implementers about the
+  general feasibility of this. The implementation sketched above
+  requires a double-word relaxed atomic load to simultaneously
+  determine that \texttt{weak\_refs == 1} and \texttt{strong\_refs ==
+    1}, to exclude a second thread permanently converting \sptr{}s
+  into \wptr{}s and vice versa. Maybe there are other protocols that
+  can be used on platforms without double-word atomic operations?}
+
+\iffalse
+
+\subsubsection{Exclusively-Counted Implementations}
+
+This implementation is prone to a version of the ABA-problem: Assuming
+we cannot check \texttt{weak\_ref} and \texttt{strong\_ref}
+simultaneously, another thread could be continuously creating \wptr{}s
+from \sptr{}s from \wptr{}s, \ldots, while \lockx{} tries to determine
+whether it should succeed or fail.
+
+Before looking at possible solutions, we first note that false
+negatives (\lockx{} failing where it actually could succeed) is
+perfectly ok, since the runtime needs to handle both outcomes, anyway.
+
+However, spurious \texttt{\wptr::lock()} failures are not acceptable,
+ie.\ calling \texttt{lock()} on an associated \wptr{} must not fail
+(because a \sptr{} still exists). That implies that we cannot simply
+emulate the \sptr{} destructor's operations on the reference counts.
+
+The implementation could use a two-word atomic load, if the
+architecture provides it:
+
+\begin{lstlisting}[language=C++,caption={Possible implementation of \lockx{} in an exclusively-counted implementation, using DW relaxed load}]
+  template <typename T>
+  class shared_ptr {
+    struct control_block {
+      struct alignas(2*sizeof(long)) __refs {
+        std::atomic<long> strong;
+        std::atomic<long> weak;
+      };
+      std::atomic<__refs> refs;
+      static_assert(std::atomic<__refs>::is_always_lock_free);
+      ~~~
+    };
+    control_block *cb;
+    T *v;
+  public:
+    shared_ptr lock_exclusive() noexcept {
+      if (cb) {
+          auto refs = cb->refs.load(std::memory_order_relaxed);
+          if (refs.weak == 1 && refs.strong == 1) {
+            // ie. one shared_ptr (*this) and zero weak_ptrs
+            return std::move(*this);
+          }
+      }
+      return {};
+    }
+  };
+\end{lstlisting}
+
+Note that we don't need double-word CAS, only a relaxed atomic load.
+However, if that is not available except in a CAS operation, a DWCAS
+could be used instead:
+
+\begin{lstlisting}[language=C++,caption={Possible implementation of \lockx{} in an exclusively-counted implementation, using DWCAS}]
+  template <typename T>
+  class shared_ptr {
+    ~~~same as before~~~
+  public:
+    shared_ptr lock_exclusive() noexcept {
+      if (cb) {
+          auto refs = control_block::_refs{1, 1};
+          if (cb->refs.compare_and_swap_weak(refs, refs, std::memory_order_relaxed)) {
+            // ie. one shared_ptr (*this) and zero weak_ptrs
+            return std::move(*this);
+          }
+      }
+      return {};
+    }
+  };
+\end{lstlisting}
+
+If no double-word atomic operations are available, this proposal
+cannot be implemented without also changing other functions of
+\sptr/\wptr. One option would be to half the size of the ref-counts,
+and use a normal atomic load.
+
+It would probably be a non-starter to add locking to implementations
+that didn't formerly need it.
+
+\emph{NB: We'd like to ask for guidance from implementers about the
+  general feasibility of this. The alternative would be to make use of
+  this function in combination with \wptr{} UB.}
+
+This is equivalent to the inclusively-counted version, so the same
+arguments apply for why relaxed memory ordering suffices and
+\texttt{refs == \{1, 1\}} cannot legally change to something else
+while \lockx{} executes.
+
+Like in the inclusively-counted case, the advantage of this
+implementation is that only \lockx{} needs to be added, and only
+\lockx{} users pay the price of a double-word atomic load, if there is
+any. All other operations, including \sptr/\wptr{} and \wptr/\sptr{}
+conversions, can remain unchanged.
+
+On architectures with no double-word atomic load, other operations may
+need to change, too, to accomodate some other, more complex form of
+protocol.
+
+\emph{NB: The authors have not looked into an alternative protocol,
+  yet, as we would like to get guidance about the implementability of
+  this proposal from implementers first}.
+
+\fi
+
+\section{Impact on the Standard}
+
+Minimal. We propose to add a new member function to \sptr{}. No other
+part of the standard is affected.
+
+\section{Proposed Wording}
+
+\subsection{Changes to \cite{cpp2a}}
+
+In section \isref{util.smartptr.shared}:
+
+\begin{itemize}
+\item at the end of paragraph (1), before the synopsis, continue the last sentence with
+  \begin{quotation}
+    [does not own a pointer], and to be an \emph{exclusive owner} if
+    it shares ownership with no other \sptr{} and there are no
+    \texttt{weak\_ptr} objects referring to it.
+  \end{quotation}
+\item at the end of \textit{modifiers} section, add the function
+  \begin{quotation}
+    \texttt{[[nodiscard]] shared\_ptr lock\_exclusive() noexcept;}
+  \end{quotation}
+\end{itemize}
+
+In section \isref{util.smartptr.shared.mod}:
+
+\begin{itemize}
+\item add new paragraph at the end:
+  \begin{quotation}
+    \texttt{[[nodiscard]] shared\_ptr lock\_exclusive() noexcept;}
+    \begin{itemize}
+    \item\textit{Returns:} \texttt{std::move(*this)} if \texttt{*this}
+      is an \textit{exclusive owner (insert reference to
+        \isref{util.smartptr.shared}/1)}, otherwise returns
+      \texttt{\{\}}. This function executes atomically.
+    \item\textit{Synchronization:} none.
+    \end{itemize}
+  \end{quotation}
+\end{itemize}
+
+\subsection{Feature Macro}
+
+We propose to use a new macro,
+\texttt{\_\_cpp\_lib\_shared\_ptr\_lock\_exclusive}, to indicate a
+library's support for this feature.
+
+\section{Design Decisions}
+
+\subsection{Why \sptr?}
+
+One legitimate question is: why put this functionality into \sptr{}
+instead of inventing a new type (pair of types)? In particular, the
+difficulties of dealing with \wptr, which is probably not used at all
+with \sptr{}s that are used for copy-on-write, make inventing a new
+pair of types to represent shared and unique ownership
+attractive. However, there is the problem with names. What to call
+such new types if \sptr{} and \uptr{} are already taken? Also, \sptr{}
+is probably already in use for CoW systems, so adding the
+functionality there, even if not enitrely trivial, probably gives the
+biggest bang for the buck.
+
+That said, we are open to explore the alternative with two different
+types as well, should LEWG prefer that approach.
+
+\subsection{Dealing with \wptr{}s}
+
+If, for the use-cases in which \lockx{} is useful, we do not envision
+use of \wptr{} at all, why not make calling \lockx{} in the presence
+of associated \wptr{}s undefined behaviour?
+
+This is an attractive option, too, since it would mean that
+implementations would become easier. In this case, we would not need
+\lockx{} at all, though, since we could just un-deprecate
+\texttt{unique()} instead and use the implementation in
+Listing~\ref{lst:clone-or-new-using-unique}.
+
+\subsection{Return Type}
+
+To represent unique ownership, we customarily use \uptr, so \lockx{}
+could conceivably return a \uptr. But \sptr{}'s custom, type-erased
+deleter and the \makeshared{} optimization of co-locating the control
+block and the payload object in a single memory allocation make this
+unrealistically complex: The \uptr{} returned would need to have some
+form of type-erased deleter template argument, making it effectively a
+different type from \uptr, and mostly layout-compatible with a
+\sptr{}.
+
+\subsection{Alternative Function Names}
+
+We have chosen to call the function \lockx{} to piggy-back on the
+existing \texttt{\wptr::lock()} function, which performs a similar (in
+particular, atomic), but different task. The \texttt{exclusive} part
+is intended to show that what is returned is an exclusive owner, if
+any, of the payload data. The word "exclusive" has been chosen over
+"unique" to avoid unwanted connotation with \uptr.
+
+Alternatives considered include:
+
+\begin{description}
+\item[\texttt{unique()}] This would have been the first choice if it
+  wasn't already taken to mean \texttt{strong\_ref == 1}. The name
+  also has said unwanted connotation with \uptr, though.
+\item[\texttt{lock\_unique()}] Not preferred for the unwanted
+  connotation with \uptr{}. Would be a good choice if \lockx{}
+  returned an actual \uptr{}, though.
+\item[\texttt{release()}] For symmetry with \texttt{\uptr::release()};
+  but we do not release the resource here, but merely
+  conditionally move it into a new \sptr{}.
+\end{description}
+
+\subsection{Atomic Shared Pointers}
+
+\texttt{std::atomic<shared\_ptr>}, as added for C++20, is merely
+a container for \sptr{}s; they are not themselves
+\sptr{}s. E.g. \texttt{std::atomic<weak\_ptr>} does not have a
+\texttt{::lock()} member function. We therefore do not propose to add
+\lockx{} to \texttt{std::atomic<shared\_ptr>}, even though it would
+probably benefit some use-cases.
+
+\iffalse
+\section{Acknowledgements}
+\fi
+
+\section{References}
+\renewcommand{\section}[2]{}%
+\begin{thebibliography}{9}
+\bibitem[S.Parent]{Seasoning}
+  Sean Parent\newline
+  \emph{C++ Seasoning}\newline
+  in: \emph{Going Native 2013}\newline
+  \url{https://channel9.msdn.com/Events/GoingNative/2013/Cpp-Seasoning}
+
+\bibitem[Qt]{qt}
+  \url{http://www.qt.io}
+
+\bibitem[API]{property_based}
+  \emph{Property-Based APIs}\\
+  in: \emph{Qt Wiki: API Design Principles}\\
+  \url{https://wiki.qt.io/API_Design_Principles#Property-Based_APIs}
+  
+\bibitem[N4810]{cpp2a}
+  Richard Smith (editor)\newline
+  \emph{Working Draft: Standard for Programming Language C++}\newline
+  \url{http://wg21.link/N4810}
+\end{thebibliography}
+
+\end{document}
+
