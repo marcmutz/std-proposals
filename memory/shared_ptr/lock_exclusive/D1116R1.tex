@@ -24,6 +24,7 @@
 
 \newcommand{\wgpaper}[1]{\href{https://wg21.link/#1}{#1}}
 \newcommand{\isref}[1]{\textbf{[\wgpaper{#1}]}}
+\newcommand{\isnref}[2]{\textbf{[\href{https://wg21.link/#1\##2}{#1}]/#2}}
 
 \newcommand{\lockx}{\texttt{lock\_exclusive()}}
 \newcommand{\uptr}{\texttt{unique\_ptr}}
@@ -228,8 +229,15 @@ conversions, can remain unchanged.
   requires a double-word relaxed atomic load to simultaneously
   determine that \texttt{weak\_refs == 1} and \texttt{strong\_refs ==
     1}, to exclude a second thread permanently converting \sptr{}s
-  into \wptr{}s and vice versa. Maybe there are other protocols that
-  can be used on platforms without double-word atomic operations?}
+  into \wptr{}s and vice versa, but otherwise leaves the existing
+  implementation of \sptr{} alone (ABI-compatible). On the other end
+  of the spectrum, \texttt{weak\_refs} could count inclusive
+  \texttt{strong\_refs} like \texttt{QSharedPointer} already does. In
+  this case, \lockx{} is trivial\cite{qsp}, but both ABI and
+  performance characteristics change. Maybe there is some
+  middle-ground here, other protocols that can be used on platforms
+  without double-word atomic operations, and don't require every
+  \sptr{} copy to up two ref counts?}
 
 \iffalse
 
@@ -384,6 +392,17 @@ library's support for this feature.
 
 \section{Design Decisions}
 
+\subsection{Why not \texttt{is\_exclusive\_owner()}?}
+
+One of the problems with \texttt{unique()} is that its result is
+useless after the function has returned (and even before then). If
+check (\texttt{is\_exclusive\_owner()} and action (move from the
+object) are not one function, it opens a window where the check can
+become false.
+
+That said, we're open to explore the idea of having such a query
+\emph{in addition} to \lockx.
+
 \subsection{Why \sptr?}
 
 One legitimate question is: why put this functionality into \sptr{}
@@ -475,6 +494,11 @@ probably benefit some use-cases.
   \emph{Property-Based APIs}\\
   in: \emph{Qt Wiki: API Design Principles}\\
   \url{https://wiki.qt.io/API_Design_Principles#Property-Based_APIs}
+
+\bibitem[QSP]{qsp}
+  Marc Mutz\newline
+  WIP: QSharedPointer::lock\_exclusive PoC\newline
+  \url{https://codereview.qt-project.org/c/qt/qtbase/+/223451/1/src/corelib/tools/qsharedpointer_impl.h}
   
 \bibitem[N4810]{cpp2a}
   Richard Smith (editor)\newline
