@@ -36,7 +36,7 @@
 
 \begin{tabular}{ll}
 % Document \#:&P0646R0\\
-  Document \#:&P1115R0\\
+  Document \#:&P1115R1\\
   Date:       &\today\\
   Project:    &Programming Language C++\\
               &Library Working Group\\
@@ -61,6 +61,13 @@
 This is a spin-off and revision of \wgpaper{P0646R0} at the request of
 LWG in Rapperswil to work around the problem of LFv3 not having opened
 shop in Rapperswil, yet.
+
+\subsection{Changes from P1115R0}
+
+\begin{enumerate}
+\item Fixed an IS section reference in Section~\ref{wording}.
+\item Rebased onto \cite{N4830}.
+\end{enumerate}
 
 \subsection{Changes from P0646R0}
 
@@ -145,8 +152,9 @@ algorithms in LFv2 were specified in namespace
 \texttt{std} directly.
 
 \section{Proposed Wording}
+\label{wording}
 
-The following changes are relative to \cite{N4810}:
+The following changes are relative to \cite{N4830}:
 
 \begin{itemize}
 \item In \isref{support.limits.general}, Table~36, adjust the listed
@@ -162,7 +170,7 @@ The following changes are relative to \cite{N4810}:
   \isref{unord.map.syn}, \isref{unord.set.syn},\\\isref{map.erasure},
   \isref{multimap.erasure}, \isref{set.erasure},
   \isref{multiset.erasure},\\ \isref{unord.map.erasure},
-  \isref{unord.multimap.erasure},\\ \isref{unord.map.erasure},
+  \isref{unord.multimap.erasure},\\ \isref{unord.set.erasure},
   \isref{unord.multiset.erasure}:
   
 For each \texttt{erase(\textit{<container>}\& c, \ldots)} and
@@ -244,7 +252,7 @@ Toronto favoured \texttt{size\_type}, so this is what's proposed now.
 \subsection{Performance Considerations}
 
 Please refer to \wgpaper{P0646R0} for a detailed analysis. TL;DR: We
-believe that returning the number of elements removed pessimises
+believe that returning the number of elements removed does not pessimise
 callers that don't need it.
 
 \section{Acknowledgements}
@@ -253,7 +261,8 @@ We thank the reviewers of draft versions of the original proposal and
 the participants of the associated discussion on
 \url{std-proposals@isocpp.org} and LWG in Rapperswil for their input:
 Sean Parent, Arthur O'Dwyer, Nicol Bolas, Ville Voutilainen, Casey
-Carter, Milian Wolff, Andr\'e Somers. All remaining errors are ours.
+Carter, Milian Wolff, Andr\'e Somers, Jonathan Wakely,
+Walter~E.~Brown. All remaining errors are ours.
 
 %\section{References}
 %\renewcommand{\section}[2]{}%
@@ -270,10 +279,10 @@ Carter, Milian Wolff, Andr\'e Somers. All remaining errors are ours.
   in: \emph{Standard Template Library Programmer's Guide}\newline
   \url{https://www.sgi.com/tech/stl/AssociativeContainer.html} (accessed 2017-06-01)
 
-\bibitem[N4810]{N4810}
+\bibitem[N4830]{N4830}
   Richard Smith (editor)\newline
   \emph{Working Draft: Standard for Programming Language C++}\newline
-  \url{http://wg21.link/N4810}
+  \url{http://wg21.link/N4830}
 
 \bibitem[P0921R2]{P0921R2} Titus Winters\newline
   \emph{Standard Library Compatibility}\newline
