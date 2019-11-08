@@ -36,7 +36,7 @@
 
 \begin{tabular}{ll}
 % Document \#:&P0646R0\\
-  Document \#:&P1115R1\\
+  Document \#:&P1115R2\\
   Date:       &\today\\
   Project:    &Programming Language C++\\
               &Library Working Group\\
@@ -61,6 +61,13 @@
 This is a spin-off and revision of \wgpaper{P0646R0} at the request of
 LWG in Rapperswil to work around the problem of LFv3 not having opened
 shop in Rapperswil, yet.
+
+\subsection{Changes from P1115R1}
+
+\begin{enumerate}
+\item Fixed \texttt{erase()} wording (contained \texttt{pred}, but shouldn't).
+\item Changed associative containers' algorithm from incrementing a running count to subtracting original and new sizes.
+\end{enumerate}
 
 \subsection{Changes from P1115R0}
 
@@ -180,9 +187,9 @@ the return type from \texttt{void} to \texttt{typename \cst}.
 \item In each of \isref{string.erasure}, \isref{deque.erasure},
   \isref{vector.erasure}, change paragraphs 1 as follows:
 \begin{lstlisting}[language=diff]
-- Effects: Equivalent to: c.erase(remove(c.begin(), c.end(), pred), c.end());
+- Effects: Equivalent to: c.erase(remove(c.begin(), c.end()), c.end());
 + Effects: Equivalent to:
-+    auto it = remove(c.begin(), c.end(), pred);
++    auto it = remove(c.begin(), c.end());
 +    auto r = distance(it, c.end());
 +    c.erase(it, c.end());
 +    return r;
@@ -212,29 +219,17 @@ the return type from \texttt{void} to \texttt{typename \cst}.
   Change paragraphs 1 as indicated:
 
 \begin{lstlisting}[language=diff]
-+ typename <container>::size_type res = 0;
++ auto original_size = c.size();
   for (auto i = c.begin(), last = c.end(); i != last; ) {
     if (pred(*i)) {
       i = c.erase(i);
-+     ++res;
     } else {
       ++i;
     }
   }
-+ return res;
++ return original_size - c.size();
 \end{lstlisting}
 
-where \texttt{\textit{<container>}} is as follows:
-\begin{itemize}
-\item in \isref{map.erasure}: \texttt{map<Key, T, Compare, Allocator>}
-\item in \isref{multimap.erasure}: \texttt{multimap<Key, T, Compare, Allocator>}
-\item in \isref{set.erasure}: \texttt{set<Key, Compare, Allocator>}
-\item in \isref{multiset.erasure}: \texttt{multiset<Key, Compare, Allocator>}
-\item in \isref{unord.map.erasure}: \texttt{unordered\_map<K, T, H, P, A>}
-\item in \isref{unord.multimap.erasure}: \texttt{unordered\_multimap<K, T, H, P, A>}
-\item in \isref{unord.set.erasure}: \texttt{unordered\_set<K, T, H, P, A>}
-\item in \isref{unord.multiset.erasure}: \texttt{unordered\_multiset<K, T, H, P, A>}
-\end{itemize}
 \end{itemize}
 
 \subsection{Feature Test Macro}
