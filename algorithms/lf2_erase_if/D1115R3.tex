@@ -36,7 +36,7 @@
 
 \begin{tabular}{ll}
 % Document \#:&P0646R0\\
-  Document \#:&P1115R2\\
+  Document \#:&D1115R3\\
   Date:       &\today\\
   Project:    &Programming Language C++\\
               &Library Working Group\\
@@ -62,6 +62,14 @@ This is a spin-off and revision of \wgpaper{P0646R0} at the request of
 LWG in Rapperswil to work around the problem of LFv3 not having opened
 shop in Rapperswil, yet.
 
+\subsection{Changes from P1115R2}
+
+\begin{enumerate}
+\item Fixed \texttt{erase()} wording (was missing \texttt{value}).
+\item Fixed an IS section reference in Section~\ref{wording}.
+\item Rebased onto \cite{N4835}.
+\end{enumerate}
+
 \subsection{Changes from P1115R1}
 
 \begin{enumerate}
@@ -73,7 +81,7 @@ shop in Rapperswil, yet.
 
 \begin{enumerate}
 \item Fixed an IS section reference in Section~\ref{wording}.
-\item Rebased onto \cite{N4830}.
+\item Rebased onto \wgpaper{N4830}.
 \end{enumerate}
 
 \subsection{Changes from P0646R0}
@@ -161,12 +169,12 @@ algorithms in LFv2 were specified in namespace
 \section{Proposed Wording}
 \label{wording}
 
-The following changes are relative to \cite{N4830}:
+The following changes are relative to \cite{N4835}:
 
 \begin{itemize}
-\item In \isref{support.limits.general}, Table~36, adjust the listed
-  \textbf{Value} of "\texttt{\_\_cpp\_lib\_erase\_if}" to match the
-  date of application of this paper to the IS draft.
+\item In \isref{version.syn}, adjust the value of the
+  "\texttt{\_\_cpp\_lib\_erase\_if}" macro to match the date of
+  application of this paper to the IS draft.
 
 \item In each of \isref{string.syn},
   \isref{string.erasure},\\ \isref{deque.syn},
@@ -187,9 +195,9 @@ the return type from \texttt{void} to \texttt{typename \cst}.
 \item In each of \isref{string.erasure}, \isref{deque.erasure},
   \isref{vector.erasure}, change paragraphs 1 as follows:
 \begin{lstlisting}[language=diff]
-- Effects: Equivalent to: c.erase(remove(c.begin(), c.end()), c.end());
+- Effects: Equivalent to: c.erase(remove(c.begin(), c.end(), value), c.end());
 + Effects: Equivalent to:
-+    auto it = remove(c.begin(), c.end());
++    auto it = remove(c.begin(), c.end(), value);
 +    auto r = distance(it, c.end());
 +    c.erase(it, c.end());
 +    return r;
@@ -213,7 +221,7 @@ the return type from \texttt{void} to \texttt{typename \cst}.
 \item In each of  \isref{map.erasure},
   \isref{multimap.erasure}, \isref{set.erasure},
   \isref{multiset.erasure},\\ \isref{unord.map.erasure},
-  \isref{unord.multi\-map.erasure}, \isref{unord.map.erasure},\\
+  \isref{unord.multi\-map.erasure}, \isref{unord.set.erasure},\\
   \isref{unord.multiset.erasure}:
   
   Change paragraphs 1 as indicated:
@@ -274,10 +282,10 @@ Walter~E.~Brown. All remaining errors are ours.
   in: \emph{Standard Template Library Programmer's Guide}\newline
   \url{https://www.sgi.com/tech/stl/AssociativeContainer.html} (accessed 2017-06-01)
 
-\bibitem[N4830]{N4830}
+\bibitem[N4835]{N4835}
   Richard Smith (editor)\newline
   \emph{Working Draft: Standard for Programming Language C++}\newline
-  \url{http://wg21.link/N4830}
+  \url{http://wg21.link/N4835}
 
 \bibitem[P0921R2]{P0921R2} Titus Winters\newline
   \emph{Standard Library Compatibility}\newline
