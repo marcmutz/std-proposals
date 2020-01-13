@@ -1,0 +1,220 @@
+\documentclass[11pt]{article}
+
+\usepackage{xcolor}
+\usepackage{fullpage}
+\usepackage[colorlinks, allcolors=blue]{hyperref}
+\usepackage{listings}
+\usepackage{parskip}
+\usepackage{amssymb}
+
+\lstdefinelanguage{diff}{
+  morecomment=[f][\color{blue}]{@@},           % group identifier
+  morecomment=[f][\color{red}]{-},             % deleted lines
+  morecomment=[f][\color{green!50!black}]{+},  % added lines
+  morecomment=[f][\color{magenta}]{---},       % diff header lines
+  morecomment=[f][\color{magenta}]{+++},
+}
+
+\lstset{
+  basicstyle=\footnotesize\ttfamily,
+}
+
+\newcommand{\emailaddress}{marc.mutz@kdab.com}
+\newcommand{\email}{\href{mailto:\emailaddress}{\emailaddress}}
+
+\newcommand{\wgpaper}[1]{\href{https://wg21.link/#1}{#1}}
+\newcommand{\isref}[1]{\textbf{[\wgpaper{#1}]}}
+\newcommand{\isnref}[2]{\textbf{[\href{https://wg21.link/#1\##2}{#1}]/#2}}
+
+\date{}
+\title{Allowing trailing commas in \emph{ctor-initializer}}
+
+\begin{document}
+
+\maketitle\vspace{-2cm}
+
+\begin{tabular}{ll}
+  Document \#:&P2067R0\\
+  Date:       &\today\\
+  Project:    &Programming Language C++\\
+              &EWG Incubator\\
+%              &Library Group\\
+  Reply-to:   &\author{Marc Mutz} \textless\email\textgreater
+\end{tabular}
+\vspace{1cm}
+\begin{abstract}
+  C++11 inherited trailing commas in \emph{enum-specifier} from C99,
+  and trailing commas in \emph{braced-init-list} from even earlier C
+  versions.
+
+  C++ adds a list that does not allow trailing commas:
+  \emph{ctor-initalizer}.
+
+  We propose to allow a trailing comma, such that the following becomes valid C++:
+
+  \begin{lstlisting}[language=C++]
+    Type() :
+        m_one(~~~), // trailing-comma style
+        m_two(~~~),
+    {}
+  \end{lstlisting}
+\end{abstract}
+
+
+%\tableofcontents
+
+\section{Motivation and Scope}
+
+The author is unaware of the reasons the C committee decided to allow
+trailing commas in \emph{enum-specifier}, but all reasons likely apply
+to \emph{ctor-initalizer}, too, just more so, as for
+\emph{enum-specifier}, one can always invent an artificial end
+enumerator to keep ``production values'' trailing-comma-seprarated:
+
+\begin{lstlisting}[language=C++]
+  enum E {
+    One,
+    Two,
+
+    NumE
+  };
+\end{lstlisting}
+
+This option does not exist for \emph{ctor-initalizer}.
+
+In our experience, the users of trailing-comma lists aim to avoid
+touching unrelated lines of code when they perform changes using a
+version control system.
+
+Consider the following example, where a new data member is being added
+at the end:
+
+\begin{lstlisting}[language=diff]
+    Type() :
+        m_one(~~~),
+-       m_two(~~~)
++       m__two(~~~),
++       m_three(~~~)
+    {}
+\end{lstlisting}
+
+The \texttt{m\_two} line is changed, but not functionally. This is
+frowned upon when using VCSs, because it disturbs the history of
+changes, which, in widely-used VCSs such as git, svn, etc., is
+recorded line-by-line. In reports like \texttt{git blame}, the
+\texttt{m\_two} initialisation will appear as if it has been changed
+when \texttt{m\_three} was added, and a deeper inquiry (looking at the
+exact commit) is needed to find that just a comma was added.
+
+Same diff with this proposal accepted:
+
+\begin{lstlisting}[language=diff]
+    Type() :
+        m_one(~~~),
+        m_two(~~~),
++       m_three(~~~),
+    {}
+\end{lstlisting}
+
+As a work-around, the following style has been adopted, at least in
+parts of Qt, and probably elsewhere:
+
+\begin{lstlisting}[language=C++]
+    Type()
+      : m_one(~~~)
+      , m_two(~~~) // leading-comma style
+    {}
+\end{lstlisting}
+
+This style, however, still treats one member special: If the first
+member is removed, the diff still touches the unrelated line
+initialising \texttt{m\_two}:
+
+\begin{lstlisting}[language=diff]
+    Type()
+-     : m_one(~~~)
+-     , m_two(~~~)
++     : m_two(~~~)
+    {}
+\end{lstlisting}
+
+The reason why this style is still preferred, even though it doesn't
+solve all of the problem, is that removal of the first data member is
+statistically less likely than adding a new data member at the end.
+
+The matter was previously discussed in 2015 on the
+\texttt{std-proposals} mailing-list\cite{mld}. Arthur O'Dwyer
+identified the changes required to the standard\cite{std}, and Ville
+developed a patch implementing this for GCC\cite{GCC}, but it appears
+that no proposal was put forth in the aftermath.
+
+This aims to be that missing proposal.
+
+While some participants of the the \texttt{std-proposals} 2015
+discussion questioned whether the work involved in adapting all C++
+parsers was worth the gain, the authors believe that the recurring
+nature of this topic, as well as the avidity with which users attempt
+to work around the issue, warrants a settlement by allowing trailing
+commas.
+
+\section{Impact on the Standard}
+
+Minimal. The syntax we propose to make valid was ill-formed before.
+
+\section{Proposed Wording}
+
+\subsection{Changes to \cite{cpp2a}}
+
+In \isnref{class.base.init}1, as well as in \isref{gram.class}, change
+the production for \emph{ctor-initalizer} as indicated:
+
+  \emph{
+  ctor-initalizer:\\
+  \hspace*{1cm}: mem-initializer-list\colorbox{green}{ ,$_{opt}$}
+  }
+
+\subsection{Feature Macro}
+
+We propose to use a new macro,
+\texttt{\_\_cpp\_ctor\_trailing\_commas}, to indicate an
+implementation's support for this feature.
+
+\section{Design Decisions}
+
+\subsection{Extension to other lists}
+
+One of the points that was raised in the \texttt{std-proposals} 2015
+discussion was whether to allow trailing commas for all lists,
+incl.\ e.g.\ function arguments. We welcome such discussion, but deem
+it outside the scope of this proposal for at least its first
+iteration, mainly because there is no general ``list'' grammar
+production in the standard to which a change could be uniformly
+applied, and other types of lists have not seen the same kinds effort
+being spent on work-arounds that \emph{ctor-initalizer} has
+``enjoyed''.
+
+\section{Acknowledgements}
+
+Arthur O'Dwyer provided the wording on which this proposal is based.\cite{std}
+
+\section{References}
+\renewcommand{\section}[2]{}%
+\begin{thebibliography}{9}
+\bibitem{mld}
+  \url{https://groups.google.com/a/isocpp.org/d/msg/std-proposals/I8N_75J9ZB8/9Mm27qvbYZkJ}
+\bibitem{std}
+  Arthur O'Dwyer\newline
+  Permit mem-initializer-list to end with a trailing comma\newline
+  \url{https://github.com/cplusplus/draft/commit/5417003045bad50705847f3d20ff72d78aeec32a}
+\bibitem{GCC}
+  Ville Voutilainen\newline
+  GCC Patch ``Allow trailing comma in a mem-initializer-list''\newline
+  \url{https://github.com/villevoutilainen/gcc/commit/3e7dc8cc67ef5a3c302ff15c90b0c7cbc56760e9}
+\bibitem[N4820]{cpp2a}
+  Richard Smith (editor)\newline
+  \emph{Working Draft: Standard for Programming Language C++}\newline
+  \url{http://wg21.link/N4820}
+\end{thebibliography}
+
+\end{document}
+
