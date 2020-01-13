@@ -1,0 +1,237 @@
+\documentclass[11pt]{article}
+
+\usepackage{xcolor}
+\usepackage{fullpage}
+\usepackage[colorlinks, allcolors=blue]{hyperref}
+\usepackage{listings}
+\usepackage{parskip}
+\usepackage{amssymb}
+
+\lstdefinelanguage{diff}{
+  morecomment=[f][\color{blue}]{@@},           % group identifier
+  morecomment=[f][\color{red}]{-},             % deleted lines
+  morecomment=[f][\color{green!50!black}]{+},  % added lines
+  morecomment=[f][\color{magenta}]{---},       % diff header lines
+  morecomment=[f][\color{magenta}]{+++},
+}
+
+\lstset{
+  basicstyle=\footnotesize\ttfamily,
+}
+
+\newcommand{\emailaddress}{marc.mutz@kdab.com}
+\newcommand{\email}{\href{mailto:\emailaddress}{\emailaddress}}
+
+\newcommand{\wgpaper}[1]{\href{https://wg21.link/#1}{#1}}
+\newcommand{\isref}[1]{\textbf{[\wgpaper{#1}]}}
+\newcommand{\isnref}[2]{\textbf{[\href{https://wg21.link/#1\##2}{#1}]/#2}}
+
+\date{}
+\title{Using \texttt{?:} to reduce the scope of constexpr-if}
+
+\begin{document}
+
+\maketitle\vspace{-2cm}
+
+\begin{tabular}{ll}
+  Document \#:&P2068R0\\
+  Date:       &\today\\
+  Project:    &Programming Language C++\\
+              &EWG Incubator\\
+%              &Library Group\\
+  Reply-to:   &\author{Marc Mutz} \textless\email\textgreater
+\end{tabular}
+\vspace{1cm}
+\begin{abstract}
+  D's \emph{static~if}, unlike C++17's \emph{constexpr~if}, does not
+  introduce scoping. Andrei Alexandrescu has repeatedly highlighted
+  this as a major enabler of \emph{static~if} over \emph{constexpr~if}.
+
+  In many cases, this feature of \emph{static~if} is used to
+  conditionally select a type. Since the \emph{static~if} scoping
+  rules are very alien to C++, we propose to allow the conditional
+  operator (which would be implicitly \texttt{constexpr}) on the
+  right-hand-side of a \emph{using-declaration}.
+
+\begin{lstlisting}[language=c++]
+  template <bool B, typename T, typename F>
+  using conditional_t = B ? T : F ;
+
+  template <bool B, typename T, typename F>
+  struct conditional { using type = conditional_t<B,T,F>; };
+\end{lstlisting}
+
+This greatly reduces the need to revert to template argument pattern
+matching (or library wrappers around it) to use conditionals in
+template meta programming, and therefore the need for a
+\emph{static~if} with D's semantics.
+\end{abstract}
+
+
+%\tableofcontents
+
+\section{Motivation and Scope}
+
+\subsection{Efficient Type Selection}
+
+Vittorio Romeo started his 2016 CppCon talk\cite{VR16} with the following example from D:
+
+\begin{lstlisting}[language=C++]
+  template INT(int i) {
+      static if (i == 32)
+          alias INT = int;
+      static if (i == 16)
+          alias INT = short;
+      else
+          static assert(0);
+  }
+\end{lstlisting}
+
+The best we can do in C++20 is
+
+\begin{lstlisting}[language=C++]
+  template <int i>
+  using INT = std::conditional_t<i == 32, int,
+              std::conditional_t<i == 16, short, std::experimental::nonesuch>;
+\end{lstlisting}
+
+This proposal suggests to allow the following instead:
+
+\begin{lstlisting}[language=C++]
+  template <int i>
+  using INT = i == 32 ? int :
+              i == 16 ? short :
+              /*else*/  static_assert(dependent_false_v<i>, "no such type") ;
+\end{lstlisting}
+
+Andrei Alexandrescu showed the following code in this 2018 Meeting C++
+Keynote\cite{AA18}, slightly edited for brevity:
+
+\begin{lstlisting}[language=c++]
+  template <class K, class V, size_t maxLength>
+  struct RobinHashTable {
+    static if (maxLength < 0xFFFE) {
+      using CellIdx = uint16_t;
+    } else {
+      using CellIdx = uint32_t;
+    }
+
+    static if (sizeof(K) % 8 < 7) {
+      struct KV {
+        K k;
+        uint8_t cellData;
+        V v;
+      };
+    } else {
+      struct KV {
+        K k;
+        V v;
+        uint8_t cellData;
+      };
+    }
+  };
+\end{lstlisting}
+
+In C++20, one would have to define both \texttt{struct KV1} and
+\texttt{struct KV2} and then alias \texttt{KV} to one of them, using
+\texttt{std::conditional\_t}. Instead of this, we simply present what
+this proposal suggests to allow:
+
+\begin{lstlisting}[language=c++]
+  template <class K, class V, size_t maxLength>
+  struct RobinHashTable {
+    using CellIdx = maxLength < 0xFFFE ? uint16_t : uint32_t;
+    using KV = sizeof(K) % 8 < 7) ? struct { K k; uint8_t cellData; V v; } :
+               /* else */           struct { K k; V v; uint8_t cellData; } ;
+  };
+\end{lstlisting}
+
+The discarded branch would have the same semantics as those of
+discarded \emph{constexpr~if} branches.
+
+\section{Impact on the Standard}
+
+Minimal. The syntax we propose to make valid was ill-formed before.
+
+\section{Proposed Wording}
+
+The following is just a quick sketch. More detailed wording can be
+provided if the EWG Incubator finds value in this proposal.
+
+It seems that the changes necessary are local to
+\emph{using-declarator}. The ``normal'' ternary operator wording in
+\isref{expr.cond} is unaffected.
+
+For the first example, we'd need to allow \texttt{static\_assert} in
+\emph{declarator-list}.
+
+Something like this:
+
+  \emph{
+  using-declarator:\\
+  \hspace*{1cm} \texttt{typename$_{opt}$} nested-name-specifier unqualified-id\\
+  \hspace*{1cm} \colorbox{green}{static-assert-declaration (mod semicolon)}\\
+  \hspace*{1cm} \colorbox{green}{logical-or-expression \texttt? using-declarator \texttt: using-declarator}
+  }
+
+where the \emph{logical-or-expression} must meet ``the value of the
+condition shall be a contextually converted constant expression of
+type \texttt{bool};''
+
+\iffalse
+\subsection{Changes to \cite{cpp2a}}
+
+In \isnref{class.base.init}1, as well as in \isref{gram.class}, change
+the production for \emph{ctor-initalizer} as indicated:
+
+  \emph{
+  ctor-initalizer:\\
+  \hspace*{1cm}: mem-initializer-list\colorbox{green}{ ,$_{opt}$}
+  }
+\fi
+
+\subsection{Feature Macro}
+
+We propose to use a new macro,
+\texttt{\_\_cpp\_using\_conditonal\_operator}, to indicate an
+implementation's support for this feature.
+
+\iffalse
+\section{Design Decisions}
+
+\subsection{Extension to other lists}
+
+One of the points that was raised in the \texttt{std-proposals} 2015
+discussion was whether to allow trailing commas for all lists,
+incl.\ e.g.\ function arguments. We welcome such discussion, but deem
+it outside the scope of this proposal for at least its first
+iteration, mainly because there is no general ``list'' grammar
+production in the standard to which a change could be uniformly
+applied, and other types of lists have not seen the same kinds effort
+being spent on work-arounds that \emph{ctor-initalizer} has
+``enjoyed''.
+
+\section{Acknowledgements}
+
+Arthur O'Dwyer provided the wording on which this proposal is based.\cite{std}
+\fi
+
+\section{References}
+\renewcommand{\section}[2]{}%
+\begin{thebibliography}{9}
+\bibitem{VR16}
+  Vittorio Romeo\newline
+  CppCon 2016: ``Implementing `static` control flow in C++14''\newline
+  \url{https://youtu.be/aXSsUqVSe2k?t=128}
+\bibitem{AA18}
+  Andrei Alexandrescu\newline
+  Meeting C++ 2018: ``The next big Thing ``\newline
+  \url{https://youtu.be/tcyb1lpEHm0?t=2716}
+\bibitem[N4820]{cpp2a}
+  Richard Smith (editor)\newline
+  \emph{Working Draft: Standard for Programming Language C++}\newline
+  \url{http://wg21.link/N4820}
+\end{thebibliography}
+
+\end{document}
+
