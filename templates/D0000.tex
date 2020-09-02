@@ -5,6 +5,7 @@
 \usepackage[colorlinks, allcolors=blue]{hyperref}
 \usepackage{listings}
 \usepackage{parskip}
+\usepackage{amssymb}
 
 \lstdefinelanguage{diff}{
   morecomment=[f][\color{blue}]{@@},           % group identifier
@@ -21,6 +22,10 @@
 \newcommand{\emailaddress}{marc.mutz@hotmail.com}
 \newcommand{\email}{\href{mailto:\emailaddress}{\emailaddress}}
 
+\newcommand{\wgpaper}[1]{\href{https://wg21.link/#1}{#1}}
+\newcommand{\isref}[1]{\textbf{[\wgpaper{#1}]}}
+\newcommand{\isnref}[2]{\textbf{[\href{https://wg21.link/#1\##2}{#1}]/#2}}
+
 \date{}
 \title{---TITLE---}
 
@@ -28,19 +33,22 @@
 
 \maketitle\vspace{-2cm}
 
-\begin{flushright}
-  \begin{tabular}{ll}
+\begin{tabular}{ll}
   Document \#:&N3887\\
-  Date:       &\date{2014-01-01}\\
+  Date:       &\today\\
   Project:    &Programming Language C++\\
               &Library Evolution Group\\
 %              &Library Group\\
-  Reply-to:   &\author{Marc Mutz}\\
-              &\textless\email\textgreater
-  \end{tabular}
-\end{flushright}
+%              &EWG Incubator\\
+%              &Library Group\\
+  Reply-to:   &\author{Marc Mutz} \textless\email\textgreater
+\end{tabular}
+\vspace{1cm}
+\begin{abstract}
 
-\section{Introduction}
+\end{abstract}
+
+\tableofcontents
 
 \section{Motivation and Scope}
 
@@ -55,12 +63,10 @@
 \section{References}
 \renewcommand{\section}[2]{}%
 \begin{thebibliography}{9}
-
-  \bibitem[N3797]{N3797}
-    Stefanus Du Toit,
-    \emph{Working Draft, Standard for Programming Language C++}\newline
-    \url{http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2013/n3797.pdf}
-
+\bibitem[N4820]{cpp2a}
+  Richard Smith (editor)\newline
+  \emph{Working Draft: Standard for Programming Language C++}\newline
+  \url{http://wg21.link/N4820}
 \end{thebibliography}
 
 \end{document}
