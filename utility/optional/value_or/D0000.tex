@@ -1,0 +1,261 @@
+\documentclass[11pt]{article}
+
+\usepackage{xcolor}
+\usepackage{fullpage}
+\usepackage[colorlinks, allcolors=blue]{hyperref}
+\usepackage{listings}
+\usepackage{parskip}
+\usepackage{amssymb}
+
+\lstdefinelanguage{diff}{
+  morecomment=[f][\color{blue}]{@@},           % group identifier
+  morecomment=[f][\color{red}]{-},             % deleted lines
+  morecomment=[f][\color{green!50!black}]{+},  % added lines
+  morecomment=[f][\color{magenta}]{---},       % diff header lines
+  morecomment=[f][\color{magenta}]{+++},
+}
+
+\lstset{
+  basicstyle=\footnotesize\ttfamily,
+}
+
+\newcommand{\emailaddress}{marc.mutz@kdab.com}
+\newcommand{\email}{\href{mailto:\emailaddress}{\emailaddress}}
+
+\newcommand{\wgpaper}[1]{\href{https://wg21.link/#1}{#1}}
+\newcommand{\isref}[1]{\textbf{[\wgpaper{#1}]}}
+\newcommand{\isnref}[2]{\textbf{[\href{https://wg21.link/#1\##2}{#1}]/#2}}
+
+\date{}
+\title{More flexible \texttt{optional::value\_or()}}
+\author{Marc Mutz}
+
+\begin{document}
+
+\maketitle%\vspace{-2cm}
+
+\begin{tabular}{ll}
+  Document \#:&N3887\\
+  Date:       &\today\\
+  Project:    &Programming Language C++\\
+              &Library Evolution Group Incubator\\
+%              &Library Group\\
+  Reply-to:   &\author{Marc Mutz} \textless\email\textgreater
+\end{tabular}
+\vspace{1cm}
+\begin{abstract}
+  We propose to extend the \texttt{value\_or()} member function
+  template in \texttt{optional}, so as to make requesting
+  default-constructed values easier:
+  \begin{lstlisting}[language=c++]
+    // now
+    opt.value_or(Type{});
+    // proposed:
+    opt.value_or({});
+    opt.value_or_make();
+  \end{lstlisting}
+  This brings \texttt{value\_or()} in line with what other functions
+  (most prominently \texttt{exchange()}), do.
+\end{abstract}
+
+\tableofcontents
+
+%\setcounter{section}{-1}
+%\section{Change History}
+
+\section{Motivation and Scope}
+
+When using \texttt{optional::value\_or()}, more often than not, the
+fall-back value passed is some form of default-constructed value:
+
+\begin{lstlisting}[language=c++]
+  optional<int> oi = ~~~;       // (1)
+  use(oi.value_or(0));
+  optional<bool> ob = ~~~;      // (2)
+  use(ob.value_or(false));
+  optional<string> os = ~~~;    // (3)
+  use(os.value_or(nullptr));    // (a)
+  use(os.value_or(""));         // (b)
+  use(os.value_or({}));         // (c)
+  use(os.vlue_or(string{});     // (d)
+  optional<vector<string>> ov = ~~~;
+  use(ov.value_or(~~~???~~~));  // (4)
+\end{lstlisting}
+
+While this works fine in case of built-in types (1, 2), it already
+fails to be convenient when the payload type is a user-defined type
+without literals.
+
+\subsection{How the C++ Developer Became a Gardener}
+
+Here's the tale of a C++ developer trying to use \texttt{value\_or()}
+in the \texttt{string} case (3): The developer first tries to use
+\texttt{nullptr} (a), which crashes on him at runtime due to
+\isnref{char.traits.require}1 in conjunction with
+\isnref{string.cons}{13}. The next try (b) succeeds, but may invoke an
+unnecessary ``\texttt{strlen}'', so he's told in review to use the
+\texttt{string} default constructor instead. So the developer tries
+(c) which fails to compile because \texttt{\{\}} fails to deduce the
+template argument of \texttt{value\_or()}, which is not defaulted, as
+e.g.\ the second argument of \texttt{exchange()} is. Grumpily, the
+developer caves in and repeats the type name of the
+\texttt{optional}'s \texttt{value\_type} (d).
+
+The next day, he's asked to use a \texttt{optional<vector<string>>}
+(4) and decides to quit and become a gardener instead.
+
+We propose two different, orthogonal, solutions to the problem:
+\begin{itemize}
+\item Default the \texttt{value\_or} template argument, so
+  \texttt{value\_or(\{\})} works, and/or
+\item Add an emplacement-like function \texttt{value\_or\_make(auto\&\&...)}, so
+  that \texttt{value\_or\_make()} works.
+\end{itemize}
+
+\subsection{Defaulting \texttt{value\_or()}'s template argument}
+\label{sec:defaulting}
+
+With this change, we'd like to ensure that \texttt{value\_or(\{\})}
+works, like \texttt{exchange(\textit{var}, \{\})} does.
+
+We can't just default like this:
+
+\begin{lstlisting}[language=c++]
+  template <typename T>
+  class optional {
+  public:
+      ~~~~
+      template <typename U = T>
+      T value_or(U&&) const;
+  };
+\end{lstlisting}
+
+as that would prevent moving the argument into the return value when
+\texttt{T} is cv-qualified (as in \texttt{optional<const string>}). It
+follows that we need to remove cv-qualifiers. We don't need to remove
+references, as \texttt{optional<T\&>} is ill-formed. If and when
+optional references become supported, this needs to be rethought.
+
+\begin{lstlisting}[language=c++]
+  template <typename T>
+  class optional {
+  public:
+      ~~~~
+      template <typename U = remove_cv_v<T>>
+      T value_or(U&&) const;
+  };
+\end{lstlisting}
+
+This enables developers to write \texttt{value\_or(\{\})}, which is
+self-explanatory, as long as you know \texttt{value\_or()} as
+currently specified.
+
+\subsection{Adding emplace-like \texttt{value\_or\_make()}}
+\label{sec:emplace}
+
+The second change was suggested to the author in very early
+discussions on the LEWGI reflector: If \texttt{value\_or()} was a
+variadic emplace-like function, then \texttt{opt.value\_or()} would
+return a default-constructed value if \texttt{opt} is not engaged.
+
+While this extension would be SC and BC\footnote{The variadic version
+  could overload the existing unary version by constraining the
+  variadic version to \texttt{sizeof...(Args) != 1}}, this author does
+not believe that \texttt{value\_or()} is a good name for such a
+function: What does \texttt{opt.value\_or()} \emph{look like}? Can a
+developer that knows \texttt{value\_or()} as currently specified make
+sense of this expression? This author doubts that very much. To him,
+this looks like ``value or nothing''. Then what's the ``nothing''
+that's being returned?  Another \texttt{optional} specialisation?
+
+So, it seems to this author that just making \texttt{value\_or()}
+emplace-like would be counter-intuitive, but at the same time such
+functionality could be useful. E.g., even if \texttt{value\_or(\{\})}
+was enabled (as per Section~\ref{sec:defaulting}), that call would
+create a default-constructed \texttt{T} which is then moved into the
+return value, instead of default-constructing the return value
+directly.
+
+Taking a cue from existing factory functions in the standard, this
+author ended up with \texttt{value\_or\_make()} as the suggested name
+for the variadic function.
+
+\section{Impact on the Standard}
+
+Only positive. Expressions enabled by this proposal make the use of
+\texttt{optional::value\_or()} easier and more consistent with the
+rest of the standard library. At the same time, no existing code is
+broken.
+
+\section{Proposed Wording}
+
+All wording is relative to \cite{cpp2a}:
+
+\begin{itemize}
+\item In \isref{version.syn}, add a feature macro
+  \texttt{\_\_cpp\_lib\_optional\_value\_or} with the usual value and
+  comment ``\texttt{// also in <optional>}''.
+\item Change \isref{optional.optional} as indicated:
+  \begin{lstlisting}[language=diff]
+    constexpr const T&& value() const&&;
+-   template<class U> constexpr T value_or(U&&) const&;
+-   template<class U> constexpr T value_or(U&&) &&;
++   template<class U=remove_cv_t<T>> constexpr T value_or(U&&) const&;
++   template<class U=remove_cv_t<T>> constexpr T value_or(U&&) &&;
++   template<class... Args> constexpr T value_or_make(Args&&... args) const&;
++   template<class... Args> constexpr T value_or_make(Args&&... args) &&;
+
+    // [optional.mod], modifiers
+  \end{lstlisting}
+\item Apply the above \texttt{remove\_cv\_t<T>} default argument also
+  to the declarations of \texttt{value\_or()} just above
+  \isnref{optional.observe}{17} and \isnref{optional.observe}{19}.
+\item At the end of \isref{optional.observe}, add:\\
+  \begin{tabular}{lll}
+    \\
+    \multicolumn3l{\texttt{template<class...\ Args> constexpr T value\_or\_make(Args\&\&...\ args) const\&}}\\\\
+    &\multicolumn2l{\textit{Mandates:} \texttt{is\_copy\_constructible\_v<T> \&\& is\_constructible\_v<T, Args...>} is \texttt{true}.}\\
+    &\multicolumn2l{\textit{Effects:} Equivalent to:}\\
+    &&\texttt{return bool(*this) ?\ **this :\ T(std::forward<Args>(args)...);}\\
+    \\
+    \multicolumn3l{\texttt{template<class...\ Args> constexpr T value\_or\_make(Args\&\&...\ args) \&\&}}\\\\
+    &\multicolumn2l{\textit{Mandates:} \texttt{is\_move\_constructible\_v<T> \&\& is\_constructible\_v<T, Args...>} is \texttt{true}.}\\
+    &\multicolumn2l{\textit{Effects:} Equivalent to:}\\
+    &&\texttt{return bool(*this) ?\ std::move(**this) :\ T(std::forward<Args>(args)...);}\\
+  \end{tabular}
+\end{itemize}
+
+\section{Design Decisions}
+
+If all we wanted was to make it easier to return a default-constructed
+T, we could just add a new function
+\texttt{value\_or\_default\_initialized()}. This is not proposed,
+because it does not address the consistency concern with
+\texttt{exchange()}.
+
+As mentioned in Section~\ref{sec:emplace}, just making
+\texttt{value\_or()} variadic leaves a lot to be desired: while
+\texttt{opt.value\_or(0xff, 0xff, 0xff)} works reasonably well for a
+\texttt{optional<color>}, it doesn't really work for default
+construction, which is the driver behind this proposal. So this author
+does not propose to make \texttt{value\_or()} variadic, but suggests
+to choose a different name for this functionality.
+
+\section{Acknowledgements}
+
+The author would like to thank all participants of the LEWG(I)
+reflector discussion that led to this proposal, esp.\ Andrzej
+Krzemienski for confirming that \texttt{value\_or()}'s non-defaulted
+template parameter was not a conscious omission.
+
+\section{References}
+\renewcommand{\section}[2]{}%
+\begin{thebibliography}{9}
+\bibitem[N4861]{cpp2a}
+  Richard Smith (editor)\newline
+  \emph{Working Draft: Standard for Programming Language C++}\newline
+  \url{http://wg21.link/N4861}
+\end{thebibliography}
+
+\end{document}
+
