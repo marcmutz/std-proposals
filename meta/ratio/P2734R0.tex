@@ -1,0 +1,166 @@
+\documentclass[11pt]{article}
+
+\usepackage{xcolor}
+\usepackage{fullpage}
+\usepackage[colorlinks, allcolors=blue]{hyperref}
+\usepackage{listings}
+\usepackage{parskip}
+\usepackage{amssymb}
+\usepackage[normalem]{ulem}
+
+\lstdefinelanguage{diff}{
+  morecomment=[f][\color{blue}]{@@},           % group identifier
+  morecomment=[f][\color{red}]{-},             % deleted lines
+  morecomment=[f][\color{green!50!black}]{+},  % added lines
+  morecomment=[f][\color{magenta}]{---},       % diff header lines
+  morecomment=[f][\color{magenta}]{+++},
+}
+
+\lstset{
+  basicstyle=\footnotesize\ttfamily,
+}
+
+\newcommand{\emailaddress}{marc.mutz@hotmail.com}
+\newcommand{\email}{\href{mailto:\emailaddress}{\emailaddress}}
+
+\newcommand{\wgpaper}[1]{\href{https://wg21.link/#1}{#1}}
+\newcommand{\isref}[1]{\textbf{[\wgpaper{#1}]}}
+\newcommand{\isnref}[2]{\textbf{[\href{https://wg21.link/#1\##2}{#1}]/#2}}
+
+\newcommand{\intmaxt}{\texttt{intmax\_t}}
+\newcommand{\quecto}{\texttt{quecto}}
+\newcommand{\ronto}{\texttt{ronto}}
+\newcommand{\yocto}{\texttt{yocto}}
+\newcommand{\zepto}{\texttt{zepto}}
+\newcommand{\zetta}{\texttt{zetta}}
+\newcommand{\yotta}{\texttt{yotta}}
+\newcommand{\ronna}{\texttt{ronna}}
+\newcommand{\quetta}{\texttt{quetta}}
+
+\date{}
+\title{Adding the new SI prefixes}
+
+\begin{document}
+
+\maketitle\vspace{-2cm}
+
+\begin{tabular}{ll}
+  Document \#:&P2734R0\\
+  Date:       &\today\\
+  Project:    &Programming Language C++\\
+%              &Library Evolution Group\\
+              &Library Group\\
+  Reply-to:   &\author{Marc Mutz} \textless\email\textgreater
+\end{tabular}
+\vspace{1cm}
+\begin{abstract}
+  We propose to add the missing SI prefixes \quecto{} ($10^{-30}$),
+  \ronto{} ($10^{-27}$), as well as \ronna{} ($10^{27}$) and \quetta{}
+  ($10^{30}$) to the \texttt{<ratio>} header.
+\end{abstract}
+
+\section{Motivation and Scope}
+
+The General Conference on Weights and Measures (CGPM), at its
+27th~meeting in November~2022, decided \cite{CGPM-22-3}
+
+\begin{quote}
+  \ldots to add to the list of SI prefixes to be used for multiples
+  and submultiples of units the following prefixes:
+
+  \begin{tabular}{lll}
+    Multiplying factor & Name & Symbol\\\hline\\
+    $10^{27}$ & \ronna & R\\
+    $10^{-27}$ & \ronto & r\\
+    $10^{30}$ & \quetta & Q\\
+    $10^{-30}$ & \quecto & q\\
+  \end{tabular}
+\end{quote}
+
+This decision directly affects \isref{ratio.syn} and \isref{ratio.si},
+which contain \texttt{ratio} typedefs for \emph{each} SI prefix. If
+the list of SI prefixes grows (it last did in 1991), the corresponding
+list of \texttt{ratio} typedefs needs to follow suit.
+
+\section{Implementability \& Impact on the Standard}
+
+The multiplying factors denominated by the new SI prefixes cannot be
+represented as a \texttt{ratio} when \intmaxt{} is 64-bit. It is a
+property they share with the existing prefixes \yocto, \zepto,
+\zetta{} and \yotta, which are therefore optional in the current
+IS.
+
+Platforms that can represent $10^{24}$ (\yotta) in \intmaxt{} can also
+likely represent $10^{30}$ (\quetta) in it (if \intmaxt{} is 128-bit
+($10^{30}<2^{100}$)). Even if \intmaxt{} is an 80- or 96-bit entity,
+the problem, from a wording point of view, remains the same:
+Non-representable typedefs are not required to be provided.
+
+In particular, this proposal is \emph{orthogonal} to
+potential\footnote{At least, this author is not aware of any such
+  proposals at the time of writing} proposals that wish to guarantee
+availability of \yotta{} etc on all platforms, e.g.\ by replacing the
+use of \intmaxt{} in the \texttt{ratio} interface with a larger
+extended integer type, an option that may or may not become available
+were \cite{gb80} to be resolved (at the time of writing, it isn't).
+
+Such proposals, however, would be much more demanding on committee
+time and require LEWG involvement, so this proposal steers clear of
+such desires and stays within the existing wording for \yotta{} etc to
+deliver the missing SI prefixes with as little effort as possible.
+
+\section{Proposed Wording}
+
+The following is relative to \cite{cpp23}:
+
+\begin{itemize}
+\item In \isref{version.syn}, add a row
+  \begin{lstlisting}[language=C++]
+    #define __cpp_lib_ratio             YYYYMML // also in <ratio>
+  \end{lstlisting}
+\item Change \isref{ratio.syn} as indicated:
+\begin{lstlisting}[language=diff]
+   // [ratio.si], convenience SI typedefs
++  using quecto = ratio<1, 1'000'000'000'000'000'000'000'000'000'000>;  // see below
++  using ronto  = ratio<1,     1'000'000'000'000'000'000'000'000'000>;  // see below
+   using yocto  = ratio<1,         1'000'000'000'000'000'000'000'000>;  // see below
+   using zepto  = ratio<1,             1'000'000'000'000'000'000'000>;  // see below
+   [...]
+   using zetta  = ratio<            1'000'000'000'000'000'000'000, 1>;  // see below
+   using yotta  = ratio<        1'000'000'000'000'000'000'000'000, 1>;  // see below
++  using ronna  = ratio<    1'000'000'000'000'000'000'000'000'000, 1>;  // see below
++  using quetta = ratio<1'000'000'000'000'000'000'000'000'000'000, 1>;  // see below
+\end{lstlisting}
+Editorial note: re-indent the whole block to preserve the \textgreater--shaped form.
+\item Change \isref{ratio.si} as indicated:
+  \begin{quote}
+    For each of the \textit{typedef-name}s \underline{\quecto, \ronto,
+    } \yocto, \zepto, \zetta, \sout{and }\yotta, \underline{\ronna,
+      and \quetta, }if both of the constants used in its specification
+    are representable by \intmaxt, the typedef is defined; if either
+    of the constants is not representable by \intmaxt, the typedef is
+    not defined.
+  \end{quote}
+\end{itemize}
+
+\section{References}
+\renewcommand{\section}[2]{}%
+\begin{thebibliography}{9}
+
+  \bibitem[CGPM~2022~Resolution~3]{CGPM-22-3}
+    \emph{CGPM/2022-Resolutions (FR-EN)}, Resolution~3,\newline
+    \url{https://www.bipm.org/documents/20126/64811223/Resolutions-2022.pdf/281f3160-fc56-3e63-dbf7-77b76500990f}
+
+  \bibitem[N4917]{cpp23}
+    Thomas Köppe,
+    \emph{Working Draft, Standard for Programming Language C++}\newline
+    \url{https://wg21.link/N4917}
+  \bibitem[LWG3828]{gb80}
+    GB NB,
+    \emph{Sync intmax\_t and uintmax\_t with C2x}\newline
+    \url{https://wg21.link/lwg3828}
+
+\end{thebibliography}
+
+\end{document}
+
